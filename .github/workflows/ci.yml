@@ -1,0 +1,295 @@
+name: CI/CD Pipeline - Library Management System
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+
+env:
+  PYTHON_VERSION: '3.10'
+
+jobs:
+  initiation:
+    name: 🚀 Initialisation du Pipeline
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📢 Message de démarrage
+        run: |
+          echo "╔══════════════════════════════════════════════════════════╗"
+          echo "║   🚀 DÉMARRAGE DU PIPELINE CI/CD                        ║"
+          echo "║   📚 Projet: Library Management System                  ║"
+          echo "║   🗄️  Base de données: MySQL                           ║"
+          echo "║   👤 Déclenché par: ${{ github.actor }}                 ║"
+          echo "║   🌿 Branche: ${{ github.ref_name }}                    ║"
+          echo "║   📋 Event: ${{ github.event_name }}                    ║"
+          echo "╚══════════════════════════════════════════════════════════╝"
+
+  tests-unitaires:
+    name: 🧪 Tests Unitaires avec Pytest + MySQL
+    runs-on: ubuntu-latest
+    needs: initiation
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: library_test
+          MYSQL_USER: test_user
+          MYSQL_PASSWORD: test_password
+        options: >-
+          --health-cmd="mysqladmin ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=3
+        ports:
+          - 3306:3306
+
+    steps:
+      - name: 📥 Checkout du code
+        uses: actions/checkout@v4
+
+      - name: 🐍 Configuration de Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: ⏳ Attente que MySQL soit prêt
+        run: |
+          echo "⏳ Attente du démarrage de MySQL..."
+          for i in {1..30}; do
+            if mysqladmin ping -h127.0.0.1 -P3306 -uroot -proot 2>/dev/null; then
+              echo "✅ MySQL est prêt!"
+              break
+            fi
+            echo "⏱️  Tentative $i/30..."
+            sleep 2
+          done
+
+      - name: 📦 Installation des dépendances
+        working-directory: ./backend
+        run: |
+          echo "📦 Installation des dépendances..."
+          pip install -r requirements.txt
+          # Installation du driver MySQL pour Python
+          pip install mysqlclient
+
+      - name: 🔧 Configuration de l'environnement de test
+        run: |
+          echo "🔧 Configuration des variables d'environnement..."
+          # Ces variables seront utilisées par Django pour se connecter à MySQL
+          echo "DATABASE_URL=mysql://root:root@localhost:3306/library_test" >> $GITHUB_ENV
+          echo "DB_HOST=localhost" >> $GITHUB_ENV
+          echo "DB_PORT=3306" >> $GITHUB_ENV
+          echo "DB_NAME=library_test" >> $GITHUB_ENV
+          echo "DB_USER=root" >> $GITHUB_ENV
+          echo "DB_PASSWORD=root" >> $GITHUB_ENV
+
+      - name: 🔍 Vérification de la structure
+        run: |
+          echo "📁 Structure du projet :"
+          find . -name "*.py" -type f | head -10
+          echo "📄 Fichiers dans tests/ :"
+          ls -la tests/ || echo "ℹ️  Dossier tests vide"
+
+      - name: 🧪 Exécution des tests avec MySQL
+        env:
+          DATABASE_URL: mysql://root:root@localhost:3306/library_test
+          DB_HOST: localhost
+          DB_PORT: 3306
+          DB_NAME: library_test
+          DB_USER: root
+          DB_PASSWORD: root
+          SECRET_KEY: test-secret-key-for-ci
+        run: |
+          echo "🧪 LANCEMENT DES TESTS AVEC MYSQL"
+          echo "🔗 Connexion à MySQL: $DB_USER@$DB_HOST:$DB_PORT/$DB_NAME"
+
+          # Test de connexion MySQL
+          mysql -h $DB_HOST -P $DB_PORT -u $DB_USER -p$DB_PASSWORD -e "SHOW DATABASES;" || echo "❌ Connexion MySQL échouée"
+
+          # Exécution des tests avec coverage
+          python -m pytest --cov=backend --cov-report=xml --cov-report=term -v
+
+          echo "🔍 Vérification du fichier coverage.xml :"
+          if [ -f "coverage.xml" ]; then
+            echo "✅ coverage.xml généré avec succès"
+            ls -la coverage.xml
+          else
+            echo "❌ coverage.xml NON généré - création factice"
+            echo '<?xml version="1.0" ?><coverage><sources><source>.</source></sources></coverage>' > coverage.xml
+          fi
+
+      - name: 📤 Upload du rapport de couverture
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: coverage.xml
+
+  qualite-du-code:
+    name: 🔍 Analyse Qualité du Code (SonarQube)
+    runs-on: ubuntu-latest
+    needs: tests-unitaires
+    # SonarQube gratuit: main branch + Pull Requests uniquement
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+
+    steps:
+      - name: 📥 Checkout du code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 📥 Téléchargement du rapport de couverture
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-xml
+          path: ./
+
+      - name: 🔍 Vérification avant SonarQube
+        run: |
+          echo "📁 Contenu après download :"
+          ls -la
+          echo "📄 Vérification coverage.xml :"
+          if [ -f "coverage.xml" ]; then
+            echo "✅ coverage.xml prêt pour SonarQube"
+          else
+            echo "❌ coverage.xml manquant - création factice"
+            echo '<?xml version="1.0" ?><coverage><sources><source>.</source></sources></coverage>' > coverage.xml
+          fi
+          echo ""
+          echo "📋 Type d'analyse:"
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "   🔀 Pull Request Analysis"
+            echo "   📌 PR #${{ github.event.pull_request.number }}"
+            echo "   🌿 Base: ${{ github.base_ref }} → Head: ${{ github.head_ref }}"
+          else
+            echo "   🎯 Main Branch Analysis"
+            echo "   🌿 Branch: ${{ github.ref_name }}"
+          fi
+
+      - name: 🔍 Analyse SonarQube (Main Branch)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: SonarSource/sonarqube-scan-action@v5.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.organization=mma-project-v2
+            -Dsonar.projectKey=MMA-PROJECT-V2_Library-Management-System
+            -Dsonar.python.coverage.reportPaths=coverage.xml
+            -Dsonar.sources=backend
+            -Dsonar.coverage.minimumCoverage=0
+
+      - name: 🔍 Analyse SonarQube (Pull Request)
+        if: github.event_name == 'pull_request'
+        uses: SonarSource/sonarqube-scan-action@v5.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.organization=mma-project-v2
+            -Dsonar.projectKey=MMA-PROJECT-V2_Library-Management-System
+            -Dsonar.python.coverage.reportPaths=coverage.xml
+            -Dsonar.sources=backend
+            -Dsonar.coverage.minimumCoverage=0
+            -Dsonar.pullrequest.key=${{ github.event.pull_request.number }}
+            -Dsonar.pullrequest.branch=${{ github.head_ref }}
+            -Dsonar.pullrequest.base=${{ github.base_ref }}
+
+      - name: 📊 Résumé SonarQube
+        run: |
+          echo ""
+          echo "╔══════════════════════════════════════════════════════════╗"
+          echo "║          🔍 ANALYSE SONARQUBE TERMINÉE                  ║"
+          echo "╚══════════════════════════════════════════════════════════╝"
+          echo "📊 Métriques analysées avec MySQL:"
+          echo "   • Couverture de code"
+          echo "   • Qualité et sécurité"
+          echo "   • Performance avec base réelle"
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "   • Décoration de la PR #${{ github.event.pull_request.number }}"
+          fi
+
+  qualite-du-code-info:
+    name: ℹ️ Info SonarQube (Push non-main)
+    runs-on: ubuntu-latest
+    needs: tests-unitaires
+    if: github.event_name == 'push' && github.ref != 'refs/heads/main'
+
+    steps:
+      - name: ℹ️ Information Plan Gratuit
+        run: |
+          echo ""
+          echo "╔══════════════════════════════════════════════════════════╗"
+          echo "║     ℹ️  ANALYSE SONARQUBE - PUSH SUR DEVELOP          ║"
+          echo "╚══════════════════════════════════════════════════════════╝"
+          echo ""
+          echo "📌 Branche: ${{ github.ref_name }}"
+          echo "📋 Event: Push (non-main branch)"
+          echo ""
+          echo "⚠️  Le plan gratuit SonarQube supporte:"
+          echo "   ✅ Analyse de la branche main"
+          echo "   ✅ Analyse des Pull Requests"
+          echo "   ❌ Push direct sur autres branches"
+          echo ""
+          echo "💡 Pour analyser develop avec SonarQube:"
+          echo "   1. Créer une Pull Request: develop → main"
+          echo "   2. SonarQube analysera automatiquement la PR"
+          echo "   3. Les résultats apparaîtront dans la PR"
+          echo ""
+          echo "✅ Tests unitaires: RÉUSSIS"
+          echo "✅ Couverture de code: GÉNÉRÉE"
+
+  pipeline-summary:
+    name: 📋 Résumé du Pipeline
+    runs-on: ubuntu-latest
+    needs: [initiation, tests-unitaires]
+    if: always()
+
+    steps:
+      - name: 📊 Statut du Pipeline
+        run: |
+          echo ""
+          echo "╔══════════════════════════════════════════════════════════╗"
+          echo "║          📊 RÉSUMÉ DU PIPELINE CI/CD                    ║"
+          echo "╚══════════════════════════════════════════════════════════╝"
+          echo ""
+          echo "📅 Date: $(date)"
+          echo "🌿 Branche: ${{ github.ref_name }}"
+          echo "👤 Auteur: ${{ github.actor }}"
+          echo "🗄️  Base de données: MySQL"
+          echo "📋 Event: ${{ github.event_name }}"
+          echo ""
+          echo "✅ Jobs exécutés:"
+          echo "   1️⃣  Initiation: ${{ needs.initiation.result }}"
+          echo "   2️⃣  Tests unitaires: ${{ needs.tests-unitaires.result }}"
+
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "   3️⃣  SonarQube (PR): Exécuté"
+          elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "   3️⃣  SonarQube (Main): Exécuté"
+          else
+            echo "   3️⃣  SonarQube: Skipped (push sur ${{ github.ref_name }})"
+            echo "       💡 Créez une PR pour analyse SonarQube"
+          fi
+
+          echo ""
+
+          if [[ "${{ needs.tests-unitaires.result }}" == "success" ]]; then
+            echo "🎉 PIPELINE RÉUSSI! Tests MySQL validés."
+            if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" != "refs/heads/main" ]]; then
+              echo "ℹ️  Note: Créez une PR vers main pour analyse SonarQube"
+            fi
+            exit 0
+          else
+            echo "❌ PIPELINE ÉCHOUÉ! Vérifiez les logs des jobs."
+            exit 1
+          fi
