@@ -48,3 +48,25 @@ def login_view(request):
         "message": "Connexion réussie.",
         "user": UserSerializer(user).data
     })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def Me(request):
+    return Response({
+        "user": UserSerializer(request.user).data
+    })
+
+
+@api_view(['GET' , 'PUT'])
+@permission_classes([IsAuthenticated])
+def UserProfileView(request):
+    profile, created = UserProfile.objects.get_or_create(user=request.user)
+    if request.method == 'GET':
+        serializer = UserProfileSerializer(profile)
+        return Response(serializer.data)
+    elif request.method == 'PUT':
+        serializer = UserProfileSerializer(profile,data=request.data,partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
