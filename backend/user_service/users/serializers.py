@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate
-from .models import User, UserProfile
+from .models import User, UserProfile , Permission , Group
 
 
 # -------------------------
@@ -83,3 +83,104 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
             "avatar_url",
             "birth_date",
         ]
+
+
+# ============================================
+#    PERMISSION SERIALIZERS
+# ============================================
+
+class PermissionSerializer(serializers.ModelSerializer):
+    """Serializer for Permission model"""
+    
+    class Meta:
+        model = Permission
+        fields = ['id', 'code', 'name', 'description', 'category']
+        read_only_fields = ['id']
+
+
+class PermissionListSerializer(serializers.ModelSerializer):
+    """Simplified permission serializer for lists"""
+    
+    class Meta:
+        model = Permission
+        fields = ['id', 'code', 'name', 'category']
+
+
+# ============================================
+#    GROUP SERIALIZERS
+# ============================================
+
+class GroupSerializer(serializers.ModelSerializer):
+    """Full serializer for Group model"""
+    
+    permissions = PermissionListSerializer(many=True, read_only=True)
+    permission_ids = serializers.PrimaryKeyRelatedField(
+        queryset=Permission.objects.all(),
+        many=True,
+        write_only=True,
+        source='permissions',
+        required=False
+    )
+    user_count = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Group
+        fields = [
+            'id', 'name', 'description', 'permissions', 
+            'permission_ids', 'is_default', 'user_count',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+    
+    def get_user_count(self, obj):
+        return obj.users.count()
+
+
+class GroupListSerializer(serializers.ModelSerializer):
+    """Simplified group serializer for lists"""
+    
+    permission_count = serializers.SerializerMethodField()
+    user_count = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Group
+        fields = ['id', 'name', 'description', 'is_default', 'permission_count', 'user_count']
+    
+    def get_permission_count(self, obj):
+        return obj.permissions.count()
+    
+    def get_user_count(self, obj):
+        return obj.users.count()
+
+
+class GroupCreateUpdateSerializer(serializers.ModelSerializer):
+    """Serializer for creating/updating groups"""
+    
+    permission_ids = serializers.PrimaryKeyRelatedField(
+        queryset=Permission.objects.all(),
+        many=True,
+        required=False
+    )
+    
+    class Meta:
+        model = Group
+        fields = ['name', 'description', 'is_default', 'permission_ids']
+    
+    def create(self, validated_data):
+        permissions = validated_data.pop('permission_ids', [])
+        group = Group.objects.create(**validated_data)
+        group.permissions.set(permissions)
+        return group
+    
+    def update(self, instance, validated_data):
+        permissions = validated_data.pop('permission_ids', None)
+        
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        
+        if permissions is not None:
+            instance.permissions.set(permissions)
+        
+        return instance
+
