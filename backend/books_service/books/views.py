@@ -3,6 +3,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.pagination import PageNumberPagination
 from .models import Book
+from django.db.models import Q
 from .serializers import BookSerializer
 
 # GET /books
@@ -55,3 +56,29 @@ def delete_book(request, id):
         return Response({'error': 'Livre non trouvé'}, status=status.HTTP_404_NOT_FOUND)
     book.delete()
     return Response(status=status.HTTP_204_NO_CONTENT)
+
+@api_view(['GET'])
+def search_books(request):
+    """
+    Recherche simple de livres par titre, auteur ou ISBN
+    """
+    query = request.GET.get('q', '').strip()
+    
+    if not query:
+        return Response({'error': 'Le paramètre de recherche "q" est requis'}, 
+                       status=status.HTTP_400_BAD_REQUEST)
+    
+    # Recherche dans titre, auteur et ISBN
+    books = Book.objects.filter(
+        Q(title__icontains=query) |
+        Q(author__icontains=query) |
+        Q(isbn__icontains=query)
+    ).order_by('title')
+    
+    serializer = BookSerializer(books, many=True)
+    
+    return Response({
+        'query': query,
+        'count': books.count(),
+        'results': serializer.data
+    }) 
