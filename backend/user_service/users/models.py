@@ -245,6 +245,3 @@ class Group(models.Model):
     def get_permission_codes(self):
         """Return list of permission codes for this group"""
         return list(self.permissions.values_list('code', flat=True))
-
-
-

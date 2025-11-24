@@ -1,19 +1,31 @@
 from django.urls import path
-from .views import register, login_view, Me, UserProfileView
-from rest_framework_simplejwt.views import (
-    TokenObtainPairView,
-    TokenRefreshView,
+from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+
+from .views import (
+    register, login_view, me, user_profile,
+    validate_token, check_permission
 )
 
-
-
 urlpatterns = [
+    # ============================================
+    #    AUTH ENDPOINTS
+    # ============================================
     path('register/', register, name='register'),
     path('login/', login_view, name='login'),
-    path('me/', Me, name='me'),
-    path('profile/', UserProfileView, name='user-profile'),
-        # JWT Provided by SimpleJWT
+    
+    # JWT Token endpoints (SimpleJWT)
     path('token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
-
+    
+    # ============================================
+    #    TOKEN INTROSPECTION (for other microservices)
+    # ============================================
+    path('validate/', validate_token, name='validate_token'),
+    path('check-permission/', check_permission, name='check_permission'),
+    
+    # ============================================
+    #    USER ENDPOINTS
+    # ============================================
+    path('me/', me, name='me'),
+    path('profile/', user_profile, name='user_profile'),
 ]
