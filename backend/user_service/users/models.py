@@ -48,15 +48,17 @@ class User(AbstractBaseUser , ):
     max_loans = models.IntegerField(default=5)
     
     # Link to custom groups (not Django's built-in groups)
+    # Using string reference for forward declaration
     custom_groups = models.ManyToManyField(
-        Group,
+        'Group',
         related_name='users',
         blank=True
     )
     
     # Direct permissions (in addition to group permissions)
+    # Using string reference for forward declaration
     direct_permissions = models.ManyToManyField(
-        Permission,
+        'Permission',
         related_name='users_direct',
         blank=True,
         help_text="Permissions assigned directly to this user"
@@ -82,6 +84,7 @@ class User(AbstractBaseUser , ):
         Get all permission codes for this user.
         Combines: group permissions + direct permissions
         """
+        # Permission is defined later in this file, but accessible at runtime
         # Admin has ALL permissions
         if self.role == 'ADMIN' or self.is_superuser:
             return list(Permission.objects.values_list('code', flat=True))
@@ -98,6 +101,10 @@ class User(AbstractBaseUser , ):
         all_permissions = set(group_permissions) | set(direct_permissions)
         
         return list(all_permissions)
+    
+    def get_all_permissions_list(self):
+        """Alias for get_all_permissions() for consistency."""
+        return self.get_all_permissions()
     
     def has_permission(self, permission_code):
         """
