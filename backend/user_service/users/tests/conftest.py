@@ -1,6 +1,5 @@
 """
 Pytest configuration and fixtures for user service tests.
-ONLY for user_service - no dependencies on other services.
 """
 
 import pytest
@@ -129,11 +128,10 @@ def member_user(db, member_group):
     """Create a member user."""
     user = User.objects.create_user(
         email='member@library.com',
-        username='member_user',
         password='testpass123',
-        first_name='John',
-        last_name='Doe',
-        role='MEMBER'
+        role='MEMBER',
+        first_name='Member',
+        last_name='User'
     )
     user.custom_groups.add(member_group)
     return user
@@ -144,11 +142,10 @@ def librarian_user(db, librarian_group):
     """Create a librarian user."""
     user = User.objects.create_user(
         email='librarian@library.com',
-        username='librarian_user',
         password='testpass123',
-        first_name='Jane',
-        last_name='Smith',
-        role='LIBRARIAN'
+        role='LIBRARIAN',
+        first_name='Librarian',
+        last_name='User'
     )
     user.custom_groups.add(librarian_group)
     return user
@@ -159,11 +156,9 @@ def admin_user(db, admin_group):
     """Create an admin user."""
     user = User.objects.create_superuser(
         email='admin@library.com',
-        username='admin_user',
         password='testpass123',
         first_name='Admin',
-        last_name='User',
-        role='ADMIN'
+        last_name='User'
     )
     user.custom_groups.add(admin_group)
     return user
@@ -244,10 +239,7 @@ def user_factory(db):
     def create_user(**kwargs):
         defaults = {
             'email': 'test@example.com',
-            'username': 'testuser',
             'password': 'testpass123',
-            'first_name': 'Test',
-            'last_name': 'User',
             'role': 'MEMBER'
         }
         defaults.update(kwargs)

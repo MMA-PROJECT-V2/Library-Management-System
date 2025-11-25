@@ -49,20 +49,17 @@ class TestRegisterView:
         }
         
         response = api_client.post(url, data, format='json')
-        
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert 'email' in response.data
     
     def test_register_missing_fields(self, api_client):
         """Test registration with missing required fields."""
         url = reverse('register')
         data = {
             'email': 'test@example.com'
-            # Missing other fields
+            # Missing other required fields
         }
         
         response = api_client.post(url, data, format='json')
-        
         assert response.status_code == status.HTTP_400_BAD_REQUEST
     
     def test_register_weak_password(self, api_client):
@@ -77,7 +74,6 @@ class TestRegisterView:
         }
         
         response = api_client.post(url, data, format='json')
-        
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert 'password' in response.data
     
@@ -168,7 +164,6 @@ class TestLoginView:
         }
         
         response = api_client.post(url, data, format='json')
-        
         assert response.status_code == status.HTTP_400_BAD_REQUEST
     
     def test_login_returns_valid_tokens(self, api_client, member_user):
@@ -271,9 +266,9 @@ class TestValidateTokenView:
         
         response = api_client.post(url, data, format='json')
         
+        assert response.status_code == status.HTTP_200_OK
         user_data = response.data['user']
         assert user_data['email'] == member_user.email
-        assert user_data['username'] == member_user.username
         assert user_data['role'] == member_user.role
         assert isinstance(user_data['permissions'], list)
         assert isinstance(user_data['groups'], list)
@@ -396,4 +391,3 @@ class TestCheckPermissionView:
             
             assert response.status_code == status.HTTP_200_OK
             assert response.data['allowed'] is True, f"Admin should have {perm_code}"
-

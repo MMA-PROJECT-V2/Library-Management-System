@@ -1,36 +1,43 @@
 from django.db import models
-from django.contrib.auth.models import AbstractBaseUser , PermissionsMixin , BaseUserManager
-
-# Create your models here.
+from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
 
 # ============================================
 #    CUSTOM USER MANAGER
 # ============================================
 
 class CustomUserManager(BaseUserManager):
-    def create_user(self, email, username, password=None, **extra_fields):
+    def create_user(self, email, password=None, **extra_fields):
+        """Create and return a regular user with email."""
         if not email:
             raise ValueError('Email is required')
         email = self.normalize_email(email)
-        user = self.model(email=email, username=username, **extra_fields)
+        user = self.model(email=email, **extra_fields)
         user.set_password(password)
         user.save(using=self._db)
         return user
     
-    def create_superuser(self, email, username, password=None, **extra_fields):
+    def create_superuser(self, email, password=None, **extra_fields):
+        """Create and return a superuser."""
         extra_fields.setdefault('is_staff', True)
         extra_fields.setdefault('is_superuser', True)
         extra_fields.setdefault('role', 'ADMIN')
-        return self.create_user(email, username, password, **extra_fields)
+        
+        if extra_fields.get('is_staff') is not True:
+            raise ValueError('Superuser must have is_staff=True.')
+        if extra_fields.get('is_superuser') is not True:
+            raise ValueError('Superuser must have is_superuser=True.')
+        
+        return self.create_user(email, password, **extra_fields)
 
 
 # ============================================
 #    USER MODEL
 # ============================================
 
-class User(AbstractBaseUser , ):
+class User(AbstractBaseUser, PermissionsMixin):
     """
     Custom User model with roles and group-based permissions.
+    Uses email as the primary identifier instead of username.
     """
     
     ROLE_CHOICES = [
@@ -39,16 +46,23 @@ class User(AbstractBaseUser , ):
         ('ADMIN', 'Admin'),
     ]
     
-    # Override email to make it unique and required
+    # Core fields
     email = models.EmailField(unique=True, max_length=255)
+    username = models.CharField(max_length=150, unique=True, blank=True)
+    first_name = models.CharField(max_length=150, blank=True)
+    last_name = models.CharField(max_length=150, blank=True)
     
     # Additional fields
     phone = models.CharField(max_length=20, blank=True, null=True)
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='MEMBER')
     max_loans = models.IntegerField(default=5)
+    date_joined = models.DateTimeField(auto_now_add=True)
     
-    # Link to custom groups (not Django's built-in groups)
-    # Using string reference for forward declaration
+    # Required for PermissionsMixin
+    is_staff = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
+    
+    # Link to custom groups
     custom_groups = models.ManyToManyField(
         'Group',
         related_name='users',
@@ -56,7 +70,6 @@ class User(AbstractBaseUser , ):
     )
     
     # Direct permissions (in addition to group permissions)
-    # Using string reference for forward declaration
     direct_permissions = models.ManyToManyField(
         'Permission',
         related_name='users_direct',
@@ -66,7 +79,7 @@ class User(AbstractBaseUser , ):
     
     # Use email for login instead of username
     USERNAME_FIELD = 'email'
-    REQUIRED_FIELDS = ['username', 'first_name', 'last_name']
+    REQUIRED_FIELDS = []  # No additional required fields for createsuperuser
     
     objects = CustomUserManager()
     
@@ -74,8 +87,20 @@ class User(AbstractBaseUser , ):
         db_table = 'users'
         ordering = ['-date_joined']
     
+    def save(self, *args, **kwargs):
+        """Auto-generate username from email if not provided."""
+        if not self.username:
+            self.username = self.email.split('@')[0]
+            # Handle duplicates by appending a number
+            base_username = self.username
+            counter = 1
+            while User.objects.filter(username=self.username).exclude(pk=self.pk).exists():
+                self.username = f"{base_username}{counter}"
+                counter += 1
+        super().save(*args, **kwargs)
+    
     def __str__(self):
-        return f"{self.username} ({self.get_role_display()})"
+        return f"{self.email} ({self.get_role_display()})"
     
     # ========== Permission Methods ==========
     
@@ -84,7 +109,6 @@ class User(AbstractBaseUser , ):
         Get all permission codes for this user.
         Combines: group permissions + direct permissions
         """
-        # Permission is defined later in this file, but accessible at runtime
         # Admin has ALL permissions
         if self.role == 'ADMIN' or self.is_superuser:
             return list(Permission.objects.values_list('code', flat=True))
@@ -107,32 +131,22 @@ class User(AbstractBaseUser , ):
         return self.get_all_permissions()
     
     def has_permission(self, permission_code):
-        """
-        Check if user has a specific permission.
-        """
-        # Admin has all permissions
+        """Check if user has a specific permission."""
         if self.role == 'ADMIN' or self.is_superuser:
             return True
-        
         return permission_code in self.get_all_permissions()
     
     def has_any_permission(self, permission_codes):
-        """
-        Check if user has ANY of the given permissions.
-        """
+        """Check if user has ANY of the given permissions."""
         if self.role == 'ADMIN' or self.is_superuser:
             return True
-        
         user_permissions = set(self.get_all_permissions())
         return bool(user_permissions & set(permission_codes))
     
     def has_all_permissions(self, permission_codes):
-        """
-        Check if user has ALL of the given permissions.
-        """
+        """Check if user has ALL of the given permissions."""
         if self.role == 'ADMIN' or self.is_superuser:
             return True
-        
         user_permissions = set(self.get_all_permissions())
         return set(permission_codes).issubset(user_permissions)
     
@@ -154,6 +168,7 @@ class User(AbstractBaseUser , ):
     def can_borrow(self):
         return self.is_active and self.has_permission('can_borrow_book')
 
+
 # ============================================
 #    USER PROFILE MODEL
 # ============================================
@@ -170,20 +185,16 @@ class UserProfile(models.Model):
         db_table = "user_profiles"
 
     def __str__(self):
-        return f"Profile of {self.user.username}"
-    
+        return f"Profile of {self.user.email}"
+
 
 # ============================================
 #    PERMISSION MODEL
 # ============================================
 
 class Permission(models.Model):
-    """
-    Custom permissions for the library system.
-    Each permission represents a specific action a user can perform.
-    """
+    """Custom permissions for the library system."""
     
-    # Permission categories
     CATEGORY_CHOICES = [
         ('BOOKS', 'Book Management'),
         ('LOANS', 'Loan Management'),
@@ -218,15 +229,13 @@ class Permission(models.Model):
     def __str__(self):
         return f"{self.name} ({self.code})"
 
+
 # ============================================
 #    GROUP MODEL
 # ============================================
 
 class Group(models.Model):
-    """
-    Groups are collections of permissions.
-    Users belong to groups and inherit all permissions from their groups.
-    """
+    """Groups are collections of permissions."""
     
     name = models.CharField(max_length=50, unique=True)
     description = models.TextField(blank=True)
