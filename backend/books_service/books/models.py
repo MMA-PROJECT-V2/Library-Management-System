@@ -21,7 +21,7 @@ class Book(models.Model):
     publisher = models.CharField(max_length=255)
     publication_year = models.IntegerField()
     category = models.CharField(max_length=50, choices=CATEGORY_CHOICES)
-    description = models.TextField()
+    description = models.TextField(blank=True)
     cover_image_url = models.URLField(blank=True)
     language = models.CharField(max_length=50, default='Français')
     pages = models.IntegerField(validators=[MinValueValidator(1)])
@@ -35,7 +35,7 @@ class Book(models.Model):
     
     class Meta:
         db_table = 'books'
-        ordering = ['-created_at']
+        ordering = ['-created_at', '-id']
         indexes = [
             models.Index(fields=['isbn']),
             models.Index(fields=['title']),
