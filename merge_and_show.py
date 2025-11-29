@@ -25,12 +25,12 @@ def run_pytest_write_xml(path: Path) -> int:
         '-m',
         'pytest',
         f'--junitxml={str(path)}',
-        '--cov=backend',
+        '--cov=backend/books_service',
         '--cov-report=term',
     ]
     print('Running pytest to produce:', path)
-    repo_root = Path(__file__).resolve().parent.parent
-    return subprocess.run(cmd, cwd=repo_root).returncode
+    repo_root = Path(__file__).resolve().parent
+    return subprocess.run(cmd, cwd=repo_root / 'backend' / 'books_service').returncode
 
 
 def parse_junit(path: Path) -> List[Tuple[str, str, str]]:
@@ -107,7 +107,7 @@ def print_report(all_cases: List[Tuple[str, str, str]]):
 
 
 def main(argv: List[str]):
-    repo_root = Path(__file__).resolve().parent.parent
+    repo_root = Path(__file__).resolve().parent
     args = argv[1:]
     run_local = False
     if '--run-local' in args:
