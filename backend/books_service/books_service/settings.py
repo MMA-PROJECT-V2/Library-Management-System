@@ -28,16 +28,12 @@ except Exception:
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = config('SECRET_KEY', default='django-insecure-change-this-in-production')
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = config('DEBUG', default=True, cast=bool)
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='*').split(',')
 
 
 # Application definition
@@ -100,11 +96,35 @@ DATABASES = {
         'PORT': config('DB_PORT', default=''),
     }
 }
+# ============================================
+#    CORS CONFIGURATION
+# ============================================
+if DEBUG:
+    CORS_ALLOW_ALL_ORIGINS = True
+else:
+    CORS_ALLOWED_ORIGINS = config(
+        'CORS_ALLOWED_ORIGINS',
+        default='http://localhost:3000',
+        cast=lambda v: [s.strip() for s in v.split(',')]
+    )
 CORS_ALLOW_ALL_ORIGINS = True
 
 REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'books.authentication.JWTAuthentication',
+    ],
+    
+    # Default permission - require authentication for all endpoints
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ],
+    
+    # Pagination
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 10,
+    
+    # Exception handling
+    'EXCEPTION_HANDLER': 'rest_framework.views.exception_handler',
 
 }
 # Password validation
@@ -147,3 +167,25 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# ============================================
+#    MICROSERVICES CONFIGURATION
+# ============================================
+
+SERVICES = {
+    'USER_SERVICE': config('USER_SERVICE_URL', default='http://localhost:8001'),
+    'BOOK_SERVICE': config('BOOK_SERVICE_URL', default='http://localhost:8002'),
+    'LOAN_SERVICE': config('LOAN_SERVICE_URL', default='http://localhost:8003'),
+}
+
+# ============================================
+#    AUTHENTICATION SETTINGS
+# ============================================
+
+# Timeout for user service calls (in seconds)
+USER_SERVICE_TIMEOUT = config('USER_SERVICE_TIMEOUT', default=5, cast=int)
+
+# Cache user validation results (optional - for performance)
+USER_VALIDATION_CACHE_TTL = config('USER_VALIDATION_CACHE_TTL', default=300, cast=int)  # 5 minutes
+
+
