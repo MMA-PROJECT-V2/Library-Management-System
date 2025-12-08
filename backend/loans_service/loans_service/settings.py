@@ -1,9 +1,10 @@
 import os
 from pathlib import Path
-from dotenv import load_dotenv
+#from dotenv import load_dotenv
+
 
 # Charger les variables d'environnement
-load_dotenv()
+#load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -60,8 +61,8 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
         'NAME': os.getenv('DB_NAME', 'loans-database'),
-        'USER': os.getenv('DB_USER', 'root'),
-        'PASSWORD': os.getenv('DB_PASSWORD', 'amine'),
+        'USER': os.getenv('DB_USER', 'loans_user'),
+        'PASSWORD': os.getenv('DB_PASSWORD', 'Loans#1234'),
         'HOST': os.getenv('DB_HOST', 'localhost'),
         'PORT': os.getenv('DB_PORT', '3306'),
         'OPTIONS': {
