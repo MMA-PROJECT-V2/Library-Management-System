@@ -146,26 +146,18 @@ if not DEBUG:
 # ============================================
 
 REST_FRAMEWORK = {
-    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
-    'PAGE_SIZE': int(config('PAGE_SIZE', default=20)),
-    'DEFAULT_RENDERER_CLASSES': [
-        'rest_framework.renderers.JSONRenderer',
-    ],
-    'DEFAULT_PARSER_CLASSES': [
-        'rest_framework.parsers.JSONParser',
-    ],
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework.authentication.SessionAuthentication',
+        'notifications.authentication.JWTAuthentication', 
     ],
-    'DEFAULT_PERMISSION_CLASSES': [] if DEBUG else ['rest_framework.permissions.IsAuthenticated'],
-    'DEFAULT_THROTTLE_CLASSES': [
-        'rest_framework.throttling.AnonRateThrottle',
-        'rest_framework.throttling.UserRateThrottle'
+    
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
     ],
-    'DEFAULT_THROTTLE_RATES': {
-        'anon': config('THROTTLE_ANON', default='100/hour'),
-        'user': config('THROTTLE_USER', default='1000/hour')
-    },
+    
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 20,
+    
+    'EXCEPTION_HANDLER': 'rest_framework.views.exception_handler',
 }
 
 # ============================================
@@ -254,8 +246,7 @@ EMAIL_TIMEOUT = 10
 # ============================================
 
 USER_SERVICE_URL = config("USER_SERVICE_URL", default="http://localhost:8001")
-USER_SERVICE_TIMEOUT = int(config("USER_SERVICE_TIMEOUT", default=5))
-
+ 
 # ============================================
 #    LOGGING CONFIGURATION
 # ============================================
@@ -341,8 +332,8 @@ NOTIFICATION_RETENTION_DAYS = int(config('NOTIFICATION_RETENTION_DAYS', default=
 # ============================================
 #    MICROSERVICES CONFIG
 # ============================================
-
 SERVICES = {
     'USER_SERVICE': config('USER_SERVICE_URL', default='http://localhost:8001'),
     'NOTIFICATION_SERVICE': 'http://localhost:8004',  # This service
 }
+USER_SERVICE_TIMEOUT = config('USER_SERVICE_TIMEOUT', default=5, cast=int)

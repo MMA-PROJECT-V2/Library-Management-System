@@ -13,3 +13,4 @@ class NotificationsConfig(AppConfig):
         # Import signals if you have any
         # from . import signals
         pass
+    
