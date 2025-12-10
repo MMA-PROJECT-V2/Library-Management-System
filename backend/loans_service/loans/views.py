@@ -5,18 +5,234 @@ from rest_framework import status
 from django.db import transaction
 from django.utils import timezone
 from datetime import timedelta
+import requests
 import logging
+import os
+from typing import Optional, Dict, Any
 
 from .models import Loan, LoanHistory
 from .serializers import LoanSerializer, LoanCreateSerializer, LoanHistorySerializer
-from .services.user_client import UserServiceClient
-from .services.book_client import BookServiceClient
 from .permissions import (
     IsAuthenticated, CanBorrowBook, CanViewLoans, 
     CanViewAllLoans, CanManageLoans, IsLibrarianOrAdmin
 )
 
 logger = logging.getLogger(__name__)
+
+
+# ============================================
+#    SERVICE CLIENTS
+# ============================================
+
+class UserServiceClient:
+    """
+    Client HTTP pour communiquer avec le User Service
+    """
+    
+    def __init__(self):
+        self.base_url = os.getenv('USER_SERVICE_URL', 'http://localhost:8001')
+        self.timeout = 10  # secondes
+    
+    def get_user(self, user_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Récupérer les informations d'un utilisateur
+        
+        Args:
+            user_id: ID de l'utilisateur
+            
+        Returns:
+            Dict avec les infos de l'utilisateur ou None si erreur
+        """
+        url = f"{self.base_url}/users/{user_id}/"
+        
+        try:
+            response = requests.get(url, timeout=self.timeout)
+            
+            if response.status_code == 200:
+                user_data = response.json()
+                logger.info(f"✅ User {user_id} trouvé: {user_data.get('username')}")
+                return user_data
+            elif response.status_code == 404:
+                logger.warning(f"❌ User {user_id} non trouvé")
+                return None
+            else:
+                logger.error(f"❌ Erreur User Service: {response.status_code} - {response.text}")
+                return None
+                
+        except requests.exceptions.Timeout:
+            logger.error(f"⏱️ Timeout lors de l'appel User Service pour user {user_id}")
+            return None
+        except requests.exceptions.RequestException as e:
+            logger.error(f"❌ Erreur de connexion User Service: {e}")
+            return None
+    
+    def is_user_active(self, user_id: int) -> bool:
+        """
+        Vérifier si un utilisateur est actif
+        
+        Args:
+            user_id: ID de l'utilisateur
+            
+        Returns:
+            True si actif, False sinon
+        """
+        user_data = self.get_user(user_id)
+        if not user_data:
+            return False
+        
+        return user_data.get('is_active', False)
+    
+    def get_user_email(self, user_id: int) -> Optional[str]:
+        """
+        Récupérer l'email d'un utilisateur
+        
+        Args:
+            user_id: ID de l'utilisateur
+            
+        Returns:
+            Email ou None
+        """
+        user_data = self.get_user(user_id)
+        if not user_data:
+            return None
+        
+        return user_data.get('email')
+
+
+class BookServiceClient:
+    """
+    Client HTTP pour communiquer avec le Books Service
+    """
+    
+    def __init__(self):
+        self.base_url = os.getenv('BOOK_SERVICE_URL', 'http://localhost:8002')
+        self.timeout = 10
+    
+    def get_book(self, book_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Récupérer les informations d'un livre.
+        
+        Args:
+            book_id: ID du livre
+            
+        Returns:
+            Dict avec les infos du livre ou None si erreur
+        """
+        url = f"{self.base_url}/api/books/{book_id}/"
+        
+        try:
+            response = requests.get(url, timeout=self.timeout)
+            
+            if response.status_code == 200:
+                book_data = response.json()
+                logger.info(f"✅ Book {book_id} trouvé: {book_data.get('title')}")
+                return book_data
+            elif response.status_code == 404:
+                logger.warning(f"❌ Book {book_id} non trouvé")
+                return None
+            else:
+                logger.error(f"❌ Erreur Books Service: {response.status_code}")
+                return None
+                
+        except requests.exceptions.Timeout:
+            logger.error(f"⏱️ Timeout Books Service pour book {book_id}")
+            return None
+        except requests.exceptions.RequestException as e:
+            logger.error(f"❌ Erreur connexion Books Service: {e}")
+            return None
+    
+    def check_availability(self, book_id: int) -> bool:
+        """
+        Vérifier si un livre est disponible.
+        
+        Args:
+            book_id: ID du livre
+            
+        Returns:
+            True si disponible, False sinon
+        """
+        book_data = self.get_book(book_id)
+        if not book_data:
+            return False
+        
+        available_copies = book_data.get('available_copies', 0)
+        return available_copies > 0
+    
+    def get_available_copies(self, book_id: int) -> int:
+        """
+        Récupérer le nombre d'exemplaires disponibles.
+        
+        Args:
+            book_id: ID du livre
+            
+        Returns:
+            Nombre d'exemplaires disponibles
+        """
+        book_data = self.get_book(book_id)
+        if not book_data:
+            return 0
+        
+        return book_data.get('available_copies', 0)
+    
+    def decrement_stock(self, book_id: int) -> bool:
+        """
+        Décrémenter le stock d'un livre (emprunt).
+        
+        Note: The Books Service should have an endpoint like:
+        POST /api/books/{id}/borrow/
+        
+        For now, we'll use the borrow endpoint if it exists.
+        
+        Args:
+            book_id: ID du livre
+            
+        Returns:
+            True si succès, False sinon
+        """
+        url = f"{self.base_url}/api/books/{book_id}/borrow/"
+        
+        try:
+            response = requests.post(url, timeout=self.timeout)
+            
+            if response.status_code == 200:
+                logger.info(f"✅ Stock décrémenté pour book {book_id}")
+                return True
+            else:
+                logger.error(f"❌ Erreur décrémentation: {response.status_code}")
+                return False
+                
+        except requests.exceptions.RequestException as e:
+            logger.error(f"❌ Erreur décrémentation stock: {e}")
+            return False
+    
+    def increment_stock(self, book_id: int) -> bool:
+        """
+        Incrémenter le stock d'un livre (retour).
+        
+        Note: The Books Service should have an endpoint like:
+        POST /api/books/{id}/return/
+        
+        Args:
+            book_id: ID du livre
+            
+        Returns:
+            True si succès, False sinon
+        """
+        url = f"{self.base_url}/api/books/{book_id}/return/"
+        
+        try:
+            response = requests.post(url, timeout=self.timeout)
+            
+            if response.status_code == 200:
+                logger.info(f"✅ Stock incrémenté pour book {book_id}")
+                return True
+            else:
+                logger.error(f"❌ Erreur incrémentation: {response.status_code}")
+                return False
+                
+        except requests.exceptions.RequestException as e:
+            logger.error(f"❌ Erreur incrémentation stock: {e}")
+            return False
 
 
 # ============================================
