@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notification Service API Tester</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f5f5f5;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+            margin-bottom: 40px;
+            text-align: center;
+        }
+
+        .header h1 {
+            color: #333;
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: #666;
+            font-size: 1.1rem;
+        }
+
+        .main-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 40px;
+            margin-bottom: 40px;
+        }
+
+        .card {
+            background: white;
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+            margin-bottom: 40px;
+        }
+
+        .card h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.5rem;
+            border-bottom: 2px solid #e0e0e0;
+            padding-bottom: 10px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        input, select, textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: all 0.3s;
+            font-family: inherit;
+        }
+
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: #4a90e2;
+            box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.1);
+        }
+
+        textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+
+        button {
+            background: #4a90e2;
+            color: white;
+            border: none;
+            padding: 14px 28px;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            width: 100%;
+            margin-top: 10px;
+        }
+
+        button:hover {
+            background: #357abd;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(74, 144, 226, 0.3);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .btn-secondary {
+            background: #e74c3c;
+        }
+
+        .btn-secondary:hover {
+            background: #c0392b;
+        }
+
+        .btn-success {
+            background: #27ae60;
+        }
+
+        .btn-success:hover {
+            background: #229954;
+        }
+
+        .btn-info {
+            background: #f39c12;
+        }
+
+        .btn-info:hover {
+            background: #d68910;
+        }
+
+        .response-section {
+            margin-top: 20px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #4a90e2;
+        }
+
+        .response-section h3 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .response-content {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            overflow-x: auto;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+
+        .status-200 { background: #d4edda; color: #155724; }
+        .status-201 { background: #d1ecf1; color: #0c5460; }
+        .status-400 { background: #f8d7da; color: #721c24; }
+        .status-500 { background: #f5c6cb; color: #721c24; }
+
+        .quick-actions {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .quick-action-btn {
+            padding: 20px;
+            background: white;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-align: center;
+        }
+
+        .quick-action-btn:hover {
+            border-color: #4a90e2;
+            transform: translateY(-3px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .quick-action-btn h3 {
+            color: #333;
+            font-size: 1rem;
+            margin-bottom: 5px;
+        }
+
+        .quick-action-btn p {
+            color: #666;
+            font-size: 0.85rem;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .loading.active {
+            display: block;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #4a90e2;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .tab {
+            padding: 10px 20px;
+            background: #f0f0f0;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: 600;
+        }
+
+        .tab.active {
+            background: #4a90e2;
+            color: white;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        @media (max-width: 968px) {
+            .main-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Notification Service API Tester</h1>
+            <p>Test your REST API endpoints with ease</p>
+        </div>
+
+        <div class="card">
+            <h2>Configuration</h2>
+            <div class="form-group">
+                <label for="apiUrl">API Base URL:</label>
+                <input type="text" id="apiUrl" value="http://localhost:8004/api" placeholder="http://localhost:8004/api">
+            </div>
+        </div>
+
+        <div class="main-grid">
+            <!-- Notifications Section -->
+            <div class="card">
+                <h2>Notifications</h2>
+                
+                <div class="tabs">
+                    <button class="tab active" onclick="switchTab('create')">Create</button>
+                    <button class="tab" onclick="switchTab('list')">List</button>
+                    <button class="tab" onclick="switchTab('user')">By User</button>
+                    <button class="tab" onclick="switchTab('stats')">Stats</button>
+                </div>
+
+                <!-- Create Notification Tab -->
+                <div id="create-tab" class="tab-content active">
+                    <div class="form-group">
+                        <label for="userId">User ID:</label>
+                        <input type="number" id="userId" value="1" placeholder="Enter user ID">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="notifType">Type:</label>
+                        <select id="notifType">
+                            <option value="EMAIL">EMAIL</option>
+                            <option value="SMS">SMS</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="subject">Subject:</label>
+                        <input type="text" id="subject" placeholder="Enter subject">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="message">Message:</label>
+                        <textarea id="message" placeholder="Enter message"></textarea>
+                    </div>
+                    
+                    <button onclick="createNotification()">Create Notification</button>
+                    <button class="btn-secondary" onclick="createAndSendNotification()">Create & Send Now</button>
+                </div>
+
+                <!-- List Notifications Tab -->
+                <div id="list-tab" class="tab-content">
+                    <button class="btn-success" onclick="listNotifications()">Get All Notifications</button>
+                    <button class="btn-success" onclick="listPendingNotifications()">Get Pending Only</button>
+                    <button class="btn-success" onclick="listRecentNotifications()">Get Recent (10)</button>
+                </div>
+
+                <!-- By User Tab -->
+                <div id="user-tab" class="tab-content">
+                    <div class="form-group">
+                        <label for="searchUserId">User ID:</label>
+                        <input type="number" id="searchUserId" value="1" placeholder="Enter user ID">
+                    </div>
+                    <button class="btn-info" onclick="getUserNotifications()">Get User's Notifications</button>
+                </div>
+
+                <!-- Stats Tab -->
+                <div id="stats-tab" class="tab-content">
+                    <div class="form-group">
+                        <label for="statsDays">Days:</label>
+                        <input type="number" id="statsDays" value="7" placeholder="Number of days">
+                    </div>
+                    <button class="btn-info" onclick="getStats()">Get Statistics</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="card">
+            <h2>Quick Actions</h2>
+            <div class="quick-actions">
+                <div class="quick-action-btn" onclick="bulkCreateSample()">
+                    <h3>Bulk Create</h3>
+                    <p>Create 3 sample notifications</p>
+                </div>
+                <div class="quick-action-btn" onclick="checkHealth()">
+                    <h3>Health Check</h3>
+                    <p>Check service status</p>
+                </div>
+                <div class="quick-action-btn" onclick="clearResponse()">
+                    <h3>Clear Response</h3>
+                    <p>Clear the response area</p>
+                </div>
+                <div class="quick-action-btn" onclick="fillSampleData()">
+                    <h3>Fill Sample</h3>
+                    <p>Fill with sample data</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Response Section -->
+        <div class="card">
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p style="margin-top: 10px; color: #666;">Loading...</p>
+            </div>
+            
+            <div id="responseSection" class="response-section" style="display: none;">
+                <h3>Response</h3>
+                <div id="statusBadge"></div>
+                <pre id="responseContent" class="response-content"></pre>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL_KEY = 'notif_api_url';
+
+        // Load saved API URL
+        document.addEventListener('DOMContentLoaded', () => {
+            const savedUrl = localStorage.getItem(API_URL_KEY);
+            if (savedUrl) {
+                document.getElementById('apiUrl').value = savedUrl;
+            }
+        });
+
+        // Save API URL
+        document.getElementById('apiUrl').addEventListener('change', (e) => {
+            localStorage.setItem(API_URL_KEY, e.target.value);
+        });
+
+        function getApiUrl() {
+            return document.getElementById('apiUrl').value.trim();
+        }
+
+        function showLoading() {
+            document.getElementById('loading').classList.add('active');
+            document.getElementById('responseSection').style.display = 'none';
+        }
+
+        function hideLoading() {
+            document.getElementById('loading').classList.remove('active');
+        }
+
+        function showResponse(data, status) {
+            hideLoading();
+            const section = document.getElementById('responseSection');
+            const badge = document.getElementById('statusBadge');
+            const content = document.getElementById('responseContent');
+            
+            section.style.display = 'block';
+            
+            let statusClass = 'status-200';
+            if (status >= 200 && status < 300) statusClass = 'status-200';
+            else if (status === 201) statusClass = 'status-201';
+            else if (status >= 400 && status < 500) statusClass = 'status-400';
+            else if (status >= 500) statusClass = 'status-500';
+            
+            badge.innerHTML = `<span class="status-badge ${statusClass}">Status: ${status}</span>`;
+            content.textContent = JSON.stringify(data, null, 2);
+        }
+
+        function showError(error) {
+            hideLoading();
+            showResponse({ error: error.message || 'Request failed' }, 500);
+        }
+
+        async function apiRequest(endpoint, method = 'GET', body = null) {
+            showLoading();
+            
+            const url = `${getApiUrl()}${endpoint}`;
+            const options = {
+                method,
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            };
+            
+            if (body) {
+                options.body = JSON.stringify(body);
+            }
+            
+            try {
+                const response = await fetch(url, options);
+                const data = await response.json();
+                showResponse(data, response.status);
+            } catch (error) {
+                showError(error);
+            }
+        }
+
+        // Notification Functions
+        async function createNotification() {
+            const body = {
+                user_id: parseInt(document.getElementById('userId').value),
+                type: document.getElementById('notifType').value,
+                subject: document.getElementById('subject').value,
+                message: document.getElementById('message').value
+            };
+            await apiRequest('/notifications/', 'POST', body);
+        }
+
+        async function createAndSendNotification() {
+            const body = {
+                user_id: parseInt(document.getElementById('userId').value),
+                type: document.getElementById('notifType').value,
+                subject: document.getElementById('subject').value,
+                message: document.getElementById('message').value
+            };
+            await apiRequest('/notifications/?send_now=true', 'POST', body);
+        }
+
+        async function listNotifications() {
+            await apiRequest('/notifications/');
+        }
+
+        async function listPendingNotifications() {
+            await apiRequest('/notifications/pending/');
+        }
+
+        async function listRecentNotifications() {
+            await apiRequest('/notifications/recent/?limit=10');
+        }
+
+        async function getUserNotifications() {
+            const userId = document.getElementById('searchUserId').value;
+            await apiRequest(`/notifications/user/${userId}/`);
+        }
+
+        async function getStats() {
+            const days = document.getElementById('statsDays').value;
+            await apiRequest(`/notifications/stats/?days=${days}`);
+        }
+
+        // Quick Actions
+        async function bulkCreateSample() {
+            const body = {
+                notifications: [
+                    { user_id: 1, type: 'EMAIL', subject: 'Test 1', message: 'Message 1' },
+                    { user_id: 2, type: 'EMAIL', subject: 'Test 2', message: 'Message 2' },
+                    { user_id: 3, type: 'SMS', subject: 'Test 3', message: 'Message 3' }
+                ]
+            };
+            await apiRequest('/notifications/bulk_create/', 'POST', body);
+        }
+
+        async function checkHealth() {
+            showLoading();
+            try {
+                const response = await fetch(`${getApiUrl().replace('/api', '')}/health/`);
+                const data = await response.json();
+                showResponse(data, response.status);
+            } catch (error) {
+                showError(error);
+            }
+        }
+
+        function clearResponse() {
+            document.getElementById('responseSection').style.display = 'none';
+        }
+
+        function fillSampleData() {
+            document.getElementById('userId').value = '1';
+            document.getElementById('subject').value = 'Book Due Reminder';
+            document.getElementById('message').value = 'Your book "Django for Beginners" is due on December 20, 2024.';
+        }
+
+        // Tab Switching
+        function switchTab(tabName) {
+            // Hide all tabs
+            const tabs = document.querySelectorAll('.tab-content');
+            tabs.forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // Deactivate all tab buttons
+            const buttons = document.querySelectorAll('.tab');
+            buttons.forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            // Show selected tab
+            const selectedTab = document.getElementById(`${tabName}-tab`);
+            if (selectedTab) {
+                selectedTab.classList.add('active');
+            }
+            
+            // Activate clicked button
+            event.target.classList.add('active');
+        }
+    </script>
+</body>
+</html>
