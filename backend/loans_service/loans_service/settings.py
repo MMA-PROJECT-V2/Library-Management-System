@@ -1,14 +1,9 @@
 import os
 from pathlib import Path
-#from dotenv import load_dotenv
-
-
-# Charger les variables d'environnement
-#load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-default-key-change-in-production')
+SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-change-this-in-production')
 
 DEBUG = os.getenv('DEBUG', 'True') == 'True'
 
@@ -23,10 +18,12 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
+    'corsheaders',
     'loans',
 ]
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -80,16 +77,34 @@ AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
 ]
 
-# REST Framework
+# ============================================
+#    REST FRAMEWORK CONFIGURATION
+# ============================================
+
 REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': [],
-    'DEFAULT_PERMISSION_CLASSES': [],
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'loans.authentication.JWTAuthentication',
+    ],
+    
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ],
+    
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,
+    
     'DEFAULT_RENDERER_CLASSES': [
         'rest_framework.renderers.JSONRenderer',
     ],
+    
+    'EXCEPTION_HANDLER': 'rest_framework.views.exception_handler',
 }
+
+# ============================================
+#    CORS CONFIGURATION
+# ============================================
+
+CORS_ALLOW_ALL_ORIGINS = True  # For development; restrict in production
 
 # Internationalization
 LANGUAGE_CODE = 'fr-fr'
@@ -104,21 +119,54 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 # Default primary key field type 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# Logging
+# ============================================
+#    MICROSERVICES CONFIGURATION
+# ============================================
+
+SERVICES = {
+    'USER_SERVICE': os.getenv('USER_SERVICE_URL', 'http://localhost:8001'),
+    'BOOK_SERVICE': os.getenv('BOOK_SERVICE_URL', 'http://localhost:8002'),
+    'LOAN_SERVICE': os.getenv('LOAN_SERVICE_URL', 'http://localhost:8003'),
+}
+
+# ============================================
+#    LOGGING CONFIGURATION
+# ============================================
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {message}',
+            'style': '{',
+        },
+    },
     'handlers': {
         'console': {
             'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
         },
         'file': {
             'class': 'logging.FileHandler',
             'filename': BASE_DIR / 'loans.log',
+            'formatter': 'verbose',
         },
     },
     'root': {
         'handlers': ['console', 'file'],
         'level': 'INFO',
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console', 'file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'loans': {
+            'handlers': ['console', 'file'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
     },
 }

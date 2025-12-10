@@ -12,12 +12,12 @@ class BookServiceClient:
     """
     
     def __init__(self):
-        self.base_url = os.getenv('BOOKS_SERVICE_URL', 'http://localhost:8002')
-        self.timeout = 10  # secondes
+        self.base_url = os.getenv('BOOK_SERVICE_URL', 'http://localhost:8002')
+        self.timeout = 10
     
     def get_book(self, book_id: int) -> Optional[Dict[str, Any]]:
         """
-        Récupérer les informations d'un livre
+        Récupérer les informations d'un livre.
         
         Args:
             book_id: ID du livre
@@ -25,7 +25,7 @@ class BookServiceClient:
         Returns:
             Dict avec les infos du livre ou None si erreur
         """
-        url = f"{self.base_url}/books/{book_id}/"
+        url = f"{self.base_url}/api/books/{book_id}/"
         
         try:
             response = requests.get(url, timeout=self.timeout)
@@ -38,25 +38,25 @@ class BookServiceClient:
                 logger.warning(f"❌ Book {book_id} non trouvé")
                 return None
             else:
-                logger.error(f"❌ Erreur Books Service: {response.status_code} - {response.text}")
+                logger.error(f"❌ Erreur Books Service: {response.status_code}")
                 return None
                 
         except requests.exceptions.Timeout:
-            logger.error(f"⏱️ Timeout lors de l'appel Books Service pour book {book_id}")
+            logger.error(f"⏱️ Timeout Books Service pour book {book_id}")
             return None
         except requests.exceptions.RequestException as e:
-            logger.error(f"❌ Erreur de connexion Books Service: {e}")
+            logger.error(f"❌ Erreur connexion Books Service: {e}")
             return None
     
     def check_availability(self, book_id: int) -> bool:
         """
-        Vérifier si un livre est disponible
+        Vérifier si un livre est disponible.
         
         Args:
             book_id: ID du livre
             
         Returns:
-            True si disponible (available_copies > 0), False sinon
+            True si disponible, False sinon
         """
         book_data = self.get_book(book_id)
         if not book_data:
@@ -67,7 +67,7 @@ class BookServiceClient:
     
     def get_available_copies(self, book_id: int) -> int:
         """
-        Récupérer le nombre d'exemplaires disponibles
+        Récupérer le nombre d'exemplaires disponibles.
         
         Args:
             book_id: ID du livre
@@ -83,7 +83,12 @@ class BookServiceClient:
     
     def decrement_stock(self, book_id: int) -> bool:
         """
-        Décrémenter le stock d'un livre (lors d'un emprunt)
+        Décrémenter le stock d'un livre (emprunt).
+        
+        Note: The Books Service should have an endpoint like:
+        POST /api/books/{id}/borrow/
+        
+        For now, we'll use the borrow endpoint if it exists.
         
         Args:
             book_id: ID du livre
@@ -91,29 +96,28 @@ class BookServiceClient:
         Returns:
             True si succès, False sinon
         """
-        url = f"{self.base_url}/books/{book_id}/stock/"
-        payload = {
-            'action': 'decrement',
-            'quantity': 1
-        }
+        url = f"{self.base_url}/api/books/{book_id}/borrow/"
         
         try:
-            response = requests.put(url, json=payload, timeout=self.timeout)
+            response = requests.post(url, timeout=self.timeout)
             
             if response.status_code == 200:
                 logger.info(f"✅ Stock décrémenté pour book {book_id}")
                 return True
             else:
-                logger.error(f"❌ Erreur décrémentation stock: {response.status_code} - {response.text}")
+                logger.error(f"❌ Erreur décrémentation: {response.status_code}")
                 return False
                 
         except requests.exceptions.RequestException as e:
-            logger.error(f"❌ Erreur lors de la décrémentation du stock: {e}")
+            logger.error(f"❌ Erreur décrémentation stock: {e}")
             return False
     
     def increment_stock(self, book_id: int) -> bool:
         """
-        Incrémenter le stock d'un livre (lors d'un retour)
+        Incrémenter le stock d'un livre (retour).
+        
+        Note: The Books Service should have an endpoint like:
+        POST /api/books/{id}/return/
         
         Args:
             book_id: ID du livre
@@ -121,22 +125,18 @@ class BookServiceClient:
         Returns:
             True si succès, False sinon
         """
-        url = f"{self.base_url}/books/{book_id}/stock/"
-        payload = {
-            'action': 'increment',
-            'quantity': 1
-        }
+        url = f"{self.base_url}/api/books/{book_id}/return/"
         
         try:
-            response = requests.put(url, json=payload, timeout=self.timeout)
+            response = requests.post(url, timeout=self.timeout)
             
             if response.status_code == 200:
                 logger.info(f"✅ Stock incrémenté pour book {book_id}")
                 return True
             else:
-                logger.error(f"❌ Erreur incrémentation stock: {response.status_code} - {response.text}")
+                logger.error(f"❌ Erreur incrémentation: {response.status_code}")
                 return False
                 
         except requests.exceptions.RequestException as e:
-            logger.error(f"❌ Erreur lors de l'incrémentation du stock: {e}")
+            logger.error(f"❌ Erreur incrémentation stock: {e}")
             return False
