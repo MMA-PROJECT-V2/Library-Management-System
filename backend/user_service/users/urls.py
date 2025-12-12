@@ -3,7 +3,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from .views import (
     register, login_view, me, user_profile,
-    validate_token, check_permission
+    validate_token, check_permission, get_user_by_id
 )
 
 urlpatterns = [
@@ -28,4 +28,7 @@ urlpatterns = [
     # ============================================
     path('me/', me, name='me'),
     path('profile/', user_profile, name='user_profile'),
+    
+    # Internal usage
+    path('<int:user_id>/', get_user_by_id, name='get_user_by_id'),
 ]

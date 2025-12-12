@@ -2,77 +2,81 @@ import requests
 from rest_framework.authentication import BaseAuthentication
 from rest_framework.exceptions import AuthenticationFailed
 from django.conf import settings
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class JWTAuthentication(BaseAuthentication):
+    """
+    Custom JWT authentication that validates tokens with the User Service.
+    """
+    
     def authenticate(self, request):
+        """
+        Authenticate the request and return a two-tuple of (user, token).
+        """
         auth_header = request.headers.get('Authorization')
         if not auth_header:
             return None
         
+        # Parse "Bearer <token>" format
         parts = auth_header.split()
         if len(parts) != 2 or parts[0].lower() != 'bearer':
-            raise AuthenticationFailed('Invalid Authorization header format.')
+            raise AuthenticationFailed('Invalid Authorization header format. Expected: Bearer <token>')
+        
         token = parts[1]
-
-        try :
-            user_data = self.verify_token_with_auth_service(token)
+        
+        try:
+            user_data = self.verify_token_with_user_service(token)
             user = RemoteUser(user_data)
             return (user, None)
         except requests.RequestException as e:
+            logger.error(f'User service unavailable: {e}')
             raise AuthenticationFailed(f'User service unavailable: {str(e)}')
         except Exception as e:
+            logger.error(f'Authentication failed: {e}')
             raise AuthenticationFailed(f'Authentication failed: {str(e)}')
-        
-
-
-def _validate_token_with_user_service(self, token):
+    
+    def verify_token_with_user_service(self, token):
         """
-        Call the user service to validate the token.
-        
-        Returns:
-            dict: User data including permissions
-        
-        Raises:
-            AuthenticationFailed: If token is invalid
+        Call the User Service to validate the token.
         """
-        user_service_url = settings.SERVICES.get('USER_SERVICE', 'http://localhost:8001')
+        user_service_url = settings.USER_SERVICE_URL
         validate_url = f"{user_service_url}/api/users/validate/"
         
         try:
             response = requests.post(
                 validate_url,
                 json={'token': token},
-                timeout=5  # 5 second timeout
+                timeout=settings.USER_SERVICE_TIMEOUT
             )
             
             if response.status_code == 200:
                 data = response.json()
                 
                 if data.get('valid'):
-                    return data.get('user')
+                    user_data = data.get('user')
+                    if not user_data:
+                        raise AuthenticationFailed('No user data in response')
+                    return user_data
                 else:
                     raise AuthenticationFailed(data.get('error', 'Invalid token'))
             else:
+                logger.error(f'Token validation failed with status {response.status_code}')
                 raise AuthenticationFailed('Token validation failed')
                 
         except requests.Timeout:
+            logger.error('User service timeout')
             raise AuthenticationFailed('User service timeout')
         except requests.ConnectionError:
+            logger.error('Cannot connect to user service')
             raise AuthenticationFailed('Cannot connect to user service')
-
-
-
-
-
-
-
 
 
 class RemoteUser:
     """
-    A user-like object that holds data from the remote user service.
-    
-    This mimics Django's User model but doesn't require a database.
+    A user-like object that holds data from the remote User Service.
     """
     
     def __init__(self, user_data):
@@ -87,44 +91,36 @@ class RemoteUser:
         self.is_active = user_data.get('is_active', True)
         self.is_staff = user_data.get('is_staff', False)
         self.is_superuser = user_data.get('is_superuser', False)
-        self._user_data = user_data        
-
+        self._user_data = user_data
+    
     @property
     def is_authenticated(self):
-        """Always return True for authenticated users."""
         return True
     
     @property
     def is_anonymous(self):
-        """Always return False for authenticated users."""
         return False
     
     def has_permission(self, permission_code):
-        """Check if user has a specific permission."""
         return permission_code in self.permissions
     
     def has_any_permission(self, permission_codes):
-        """Check if user has any of the given permissions."""
         return any(perm in self.permissions for perm in permission_codes)
     
     def has_all_permissions(self, permission_codes):
-        """Check if user has all of the given permissions."""
         return all(perm in self.permissions for perm in permission_codes)
     
     def is_member(self):
-        """Check if user is a member."""
         return self.role == 'MEMBER'
     
     def is_librarian(self):
-        """Check if user is a librarian."""
         return self.role == 'LIBRARIAN'
     
     def is_admin(self):
-        """Check if user is an admin."""
         return self.role == 'ADMIN' or self.is_superuser
     
     def __str__(self):
         return f"{self.email} ({self.role})"
     
     def __repr__(self):
-        return f"<RemoteUser: {self.email}>"    
+        return f"<RemoteUser: {self.email}>"

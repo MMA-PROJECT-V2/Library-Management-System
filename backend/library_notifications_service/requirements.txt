@@ -1,0 +1,42 @@
+# Django Framework
+Django==4.2.7
+djangorestframework==3.14.0
+
+# CORS Support
+django-cors-headers==4.3.1
+
+# Environment Variables
+python-decouple==3.8
+
+# Database - MySQL (optional, for production)
+pymysql==1.1.0
+
+# Celery (Async Task Queue)
+celery==5.3.4
+redis==5.0.1
+django-celery-beat==2.5.0
+django-celery-results==2.5.1
+
+# Message Broker
+amqp==5.2.0
+
+# Production Server
+gunicorn==21.2.0
+
+# HTTP Client for microservices communication
+requests==2.31.0
+
+# Testing
+pytest==7.4.3
+pytest-django==4.5.2
+pytest-cov==4.1.0
+
+# Optional: SMS Support
+# twilio==8.10.1
+
+# Optional: Monitoring
+# flower==2.0.1
+
+# Optional: Development Tools
+# django-debug-toolbar==4.2.0
+# ipython==8.18.1

@@ -12,6 +12,53 @@ from .serializers import (
     UserSerializer, UserDetailSerializer, UserProfileSerializer,
     RegisterSerializer, LoginSerializer
 )
+import requests
+from django.conf import settings
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+
+def send_notification_from_template(template_name, user_id, context, token=None):
+    """Helper to send notifications using templates via Notification Service"""
+    headers = {}
+    if token:
+        if token.lower().startswith('bearer '):
+            headers['Authorization'] = token
+        else:
+            headers['Authorization'] = f"Bearer {token}"
+            
+    try:
+        response = requests.post(
+            f"{settings.SERVICES.get('NOTIFICATION_SERVICE', 'http://localhost:8004')}/api/notifications/send_from_template/",
+            json={
+                'template_id': get_template_id(template_name),
+                'user_id': user_id,
+                'context': context,
+                'type': 'EMAIL'
+            },
+            headers=headers,
+            timeout=5
+        )
+        if response.status_code != 201:
+            logger.warning(f"Notification service returned {response.status_code}: {response.text}")
+    except Exception as e:
+        logger.error(f"Failed to send notification: {e}")
+        # Don't re-raise, notification failure shouldn't block registration
+        pass
+
+
+def get_template_id(template_name):
+    """Map template names to IDs"""
+    template_map = {
+        'user_registered': 5,  # This is the 5th template
+        'loan_created': 1,
+        'loan_returned_ontime': 2,
+        'loan_returned_late': 3,
+        'loan_renewed': 4
+    }
+    return template_map.get(template_name, 1)
 
 
 # ============================================
@@ -38,6 +85,19 @@ class RegisterView(APIView):
         
         # Generate tokens for the new user
         refresh = RefreshToken.for_user(user)
+        access_token = str(refresh.access_token)
+        
+        # Send welcome email using template
+        send_notification_from_template(
+            template_name='user_registered',
+            user_id=user.id,
+            context={
+                'user_name': user.first_name or user.username,
+                'user_email': user.email,
+                'user_role': user.role
+            },
+            token=access_token
+        )
         
         return Response({
             "message": "Inscription réussie.",
@@ -260,3 +320,37 @@ validate_token = ValidateTokenView.as_view()
 check_permission = CheckPermissionView.as_view()
 me = MeView.as_view()
 user_profile = UserProfileView.as_view()
+
+
+# ============================================
+#    GET USER BY ID (for microservices)
+# ============================================
+
+@method_decorator(csrf_exempt, name='dispatch')
+class UserDetailByIDView(APIView):
+    """
+    Get user details by ID.
+    Used by other microservices (e.g. Notification Service) to fetch user info.
+    """
+    permission_classes = [AllowAny]
+    
+    def get(self, request, user_id):
+        try:
+            user = User.objects.get(id=user_id)
+            return Response({
+                "id": user.id,
+                "email": user.email,
+                "username": user.username,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+                "phone": user.phone_number if hasattr(user, 'phone_number') else None,
+                "is_active": user.is_active,
+                "role": user.role
+            })
+        except User.DoesNotExist:
+            return Response(
+                {"error": "User not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+get_user_by_id = UserDetailByIDView.as_view()
