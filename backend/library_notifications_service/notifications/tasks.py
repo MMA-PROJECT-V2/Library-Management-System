@@ -102,6 +102,12 @@ def send_notification_email(self, notification_id):
         # Get recipient email from User Service
         recipient_email = get_user_email(notif.user_id)
         
+        # Log message details for debugging
+        logger.info(f"Sending email for notification {notification_id}")
+        logger.info(f"Subject: {notif.subject}")
+        logger.info(f"Message length: {len(notif.message)} characters")
+        logger.debug(f"Full message:\n{notif.message}")
+        
         # Send email
         send_mail(
             subject=notif.subject,

@@ -24,9 +24,9 @@ class NotificationSerializer(serializers.ModelSerializer):
     
     def validate_message(self, value):
         """Validate message content."""
-        if not value.strip():
+        if not value or not value.strip():
             raise serializers.ValidationError("Message cannot be empty")
-        return value.strip()
+        return value  # Don't strip - preserve formatting!
     
     def validate_type(self, value):
         """Validate notification type."""

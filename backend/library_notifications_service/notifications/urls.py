@@ -1,26 +1,16 @@
-# notifications/urls.py
-from django.urls import path, include
-from rest_framework.routers import DefaultRouter
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from django.utils import timezone
-from .views import NotificationViewSet, NotificationTemplateViewSet
-
-router = DefaultRouter()
-router.register(r"notifications", NotificationViewSet, basename="notification")
-router.register(r"templates", NotificationTemplateViewSet, basename="template")
-
-@api_view(['GET'])
-def health_check(request):
-    """Health check endpoint for monitoring."""
-    return Response({
-        'status': 'healthy',
-        'service': 'notifications',
-        'timestamp': timezone.now().isoformat(),
-        'version': '1.0.0'
-    })
+from django.urls import path
+from . import views
 
 urlpatterns = [
-    path('health/', health_check, name='health_check'),
-    path('', include(router.urls)),
+    # Health check
+    path('health/', views.health_check, name='health-check'),
+    
+    # Notification endpoints
+    path('all_notifications/', views.list_all_notifications, name='list-all-notifications'),
+    path('notifications/', views.create_notification, name='create-notification'),
+    path('notifications/send_from_template/', views.send_from_template, name='send-from-template'),
+    path('notifications/user/<int:user_id>/', views.get_user_notifications_by_id, name='user-notifications-by-id'),
+    path('notifications/user_notifications/', views.user_notifications, name='user-notifications'),
+    path('notifications/pending/', views.get_pending_notifications, name='pending-notifications'),
+    path('notifications/stats/', views.stats, name='notification-stats'),
 ]
