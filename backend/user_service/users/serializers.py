@@ -41,11 +41,31 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ["email", "username", "password", "first_name", "last_name", "phone"]
+        fields = ["email", "username", "password", "first_name", "last_name", "phone", "role"]
 
     def create(self, validated_data):
         password = validated_data.pop("password")
+        
+        # If role is provided, ensure we handle is_staff/is_superuser logic in create_user
+        # But create_user in CustomUserManager doesn't automatically set is_staff based on role arg unless we modify it or handle it here.
+        # Let's rely on the model's save method or handle it here if CustomUserManager is strict.
+        
+        # Checking CustomUserManager.create_user implementation again via view_file would be safe, 
+        # but from previous context it took **extra_fields.
+        
         user = User.objects.create_user(password=password, **validated_data)
+        
+        # Handle permission flags based on role
+        if user.role == 'ADMIN':
+            user.is_staff = True
+            user.is_superuser = True
+        elif user.role == 'LIBRARIAN':
+            user.is_staff = True
+            user.is_superuser = False
+        else:
+            user.is_staff = False
+            user.is_superuser = False
+        user.save()
         
         # Auto-assign to default group based on role
         from .models import Group

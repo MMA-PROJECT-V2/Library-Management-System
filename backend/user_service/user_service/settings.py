@@ -148,4 +148,5 @@ SERVICES = {
     'USER_SERVICE': config('USER_SERVICE_URL', default='http://localhost:8001'),
     'BOOK_SERVICE': config('BOOK_SERVICE_URL', default='http://localhost:8002'),
     'LOAN_SERVICE': config('LOAN_SERVICE_URL', default='http://localhost:8003'),
+    'NOTIFICATION_SERVICE': config('NOTIFICATION_SERVICE_URL', default='http://localhost:8004'),
 }
