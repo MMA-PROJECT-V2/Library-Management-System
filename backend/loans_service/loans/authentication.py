@@ -80,7 +80,8 @@ class JWTAuthentication(BaseAuthentication):
                 else:
                     raise AuthenticationFailed(data.get('error', 'Invalid token'))
             else:
-                raise AuthenticationFailed('Token validation failed')
+                logger.error(f"Token validation failed. Status: {response.status_code}, Body: {response.text}")
+                raise AuthenticationFailed(f'Token validation failed: {response.status_code} - {response.text}')
                 
         except requests.Timeout:
             raise AuthenticationFailed('User service timeout')

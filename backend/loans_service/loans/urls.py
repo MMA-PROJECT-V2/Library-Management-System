@@ -26,4 +26,7 @@ urlpatterns = [
     path('list/', views.loan_list, name='loan-list'),
     path('<int:pk>/', views.loan_detail, name='loan-detail'),
     path('<int:pk>/history/', views.loan_history, name='loan-history'),
+    
+     path('send-overdue-notifications/', views.send_overdue_notifications, name='send-overdue-notifications'),
+
 ]

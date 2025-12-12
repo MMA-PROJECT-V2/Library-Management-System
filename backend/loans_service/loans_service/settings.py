@@ -67,8 +67,8 @@ DATABASES = {
     'default': {
         'ENGINE': config('DB_ENGINE', default='django.db.backends.mysql'),
         'NAME': config('DB_NAME', default='loans-database'),
-        'USER': config('DB_USER', default='loans_user'),
-        'PASSWORD': config('DB_PASSWORD', default='Loans#1234'),
+        'USER': config('DB_USER', default='root'),
+        'PASSWORD': config('DB_PASSWORD', default=''),
         'HOST': config('DB_HOST', default='localhost'),
         'PORT': config('DB_PORT', default='3306'),
         'OPTIONS': {
@@ -152,6 +152,7 @@ SERVICES = {
     'USER_SERVICE': config('USER_SERVICE_URL', default='http://localhost:8001'),
     'BOOK_SERVICE': config('BOOK_SERVICE_URL', default='http://localhost:8002'),
     'LOAN_SERVICE': config('LOAN_SERVICE_URL', default='http://localhost:8003'),
+    'NOTIFICATION_SERVICE': config('NOTIFICATION_SERVICE_URL', default='http://localhost:8004'),
 }
 
 # ============================================

@@ -16,9 +16,54 @@ from .permissions import (
     IsAuthenticated, CanBorrowBook, CanViewLoans, 
     CanViewAllLoans, CanManageLoans, IsLibrarianOrAdmin
 )
+import requests
+from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
+
+def send_notification_from_template(template_name, user_id, context, token=None):
+    """Helper to send notifications using templates via Notification Service"""
+    headers = {}
+    if token:
+        if token.lower().startswith('bearer '):
+            headers['Authorization'] = token
+        else:
+            headers['Authorization'] = f"Bearer {token}"
+        logger.debug(f"Sending notification with token: {token[:20]}...")
+    else:
+        logger.warning("Sending notification WITHOUT token - this may fail!")
+            
+    try:
+        response = requests.post(
+            f"{settings.SERVICES.get('NOTIFICATION_SERVICE', 'http://localhost:8004')}/api/notifications/send_from_template/",
+            json={
+                'template_id': get_template_id(template_name),
+                'user_id': user_id,
+                'context': context,
+                'type': 'EMAIL'
+            },
+            headers=headers,
+            timeout=5
+        )
+        if response.status_code != 201:
+            logger.error(f"Notification failed: {response.status_code} - {response.text}")
+        return response.status_code == 201
+    except Exception as e:
+        logger.error(f"Failed to send notification: {e}")
+        return False
+
+
+def get_template_id(template_name):
+    """Map template names to IDs - you can cache this or fetch from DB"""
+    template_map = {
+        'loan_created': 1,
+        'loan_returned_ontime': 2,
+        'loan_returned_late': 3,
+        'loan_renewed': 4,
+        'user_registered': 5
+    }
+    return template_map.get(template_name, 1)
 
 # ============================================
 #    SERVICE CLIENTS
@@ -43,7 +88,7 @@ class UserServiceClient:
         Returns:
             Dict avec les infos de l'utilisateur ou None si erreur
         """
-        url = f"{self.base_url}/users/{user_id}/"
+        url = f"{self.base_url}/api/users/{user_id}/"
         
         try:
             response = requests.get(url, timeout=self.timeout)
@@ -174,7 +219,7 @@ class BookServiceClient:
         
         return book_data.get('available_copies', 0)
     
-    def decrement_stock(self, book_id: int) -> bool:
+    def decrement_stock(self, book_id: int, token: str = None) -> bool:
         """
         Décrémenter le stock d'un livre (emprunt).
         
@@ -185,14 +230,18 @@ class BookServiceClient:
         
         Args:
             book_id: ID du livre
+            token: JWT token for authentication
             
         Returns:
             True si succès, False sinon
         """
         url = f"{self.base_url}/api/books/{book_id}/borrow/"
+        headers = {}
+        if token:
+            headers['Authorization'] = f"Bearer {token}"
         
         try:
-            response = requests.post(url, timeout=self.timeout)
+            response = requests.post(url, headers=headers, timeout=self.timeout)
             
             if response.status_code == 200:
                 logger.info(f"✅ Stock décrémenté pour book {book_id}")
@@ -205,7 +254,7 @@ class BookServiceClient:
             logger.error(f"❌ Erreur décrémentation stock: {e}")
             return False
     
-    def increment_stock(self, book_id: int) -> bool:
+    def increment_stock(self, book_id: int, token: str = None) -> bool:
         """
         Incrémenter le stock d'un livre (retour).
         
@@ -214,14 +263,18 @@ class BookServiceClient:
         
         Args:
             book_id: ID du livre
+            token: JWT token for authentication
             
         Returns:
             True si succès, False sinon
         """
         url = f"{self.base_url}/api/books/{book_id}/return/"
+        headers = {}
+        if token:
+            headers['Authorization'] = f"Bearer {token}"
         
         try:
-            response = requests.post(url, timeout=self.timeout)
+            response = requests.post(url, headers=headers, timeout=self.timeout)
             
             if response.status_code == 200:
                 logger.info(f"✅ Stock incrémenté pour book {book_id}")
@@ -357,8 +410,9 @@ def create_loan(request):
                 status='ACTIVE'
             )
             
-            # 6. Decrement book stock
-            if not book_client.decrement_stock(book_id):
+            # 6. Decrement book stock (pass auth token)
+            auth_token = request.META.get('HTTP_AUTHORIZATION', '').replace('Bearer ', '')
+            if not book_client.decrement_stock(book_id, token=auth_token):
                 raise Exception("Échec de la décrémentation du stock")
             
             # 7. Create audit log
@@ -370,6 +424,24 @@ def create_loan(request):
             )
             
             serializer = LoanSerializer(loan)
+            
+            # Send professional notification email using template
+            auth_token = request.META.get('HTTP_AUTHORIZATION', '').replace('Bearer ', '')
+            
+            send_notification_from_template(
+                template_name='loan_created',
+                user_id=user_id,
+                context={
+                    'book_title': book_data.get('title'),
+                    'book_author': book_data.get('author', 'Non spécifié'),
+                    'book_isbn': book_data.get('isbn', 'Non spécifié'),
+                    'book_category': book_data.get('category', 'Non spécifiée'),
+                    'loan_date': loan.loan_date.strftime('%d/%m/%Y'),
+                    'due_date': loan.due_date.strftime('%d/%m/%Y'),
+                    'loan_id': loan.id
+                },
+                token=auth_token
+            )
             return Response(
                 {
                     'message': 'Emprunt créé avec succès',
@@ -442,8 +514,9 @@ def return_loan(request, pk):
             
             loan.save()
             
-            # Increment book stock
-            if not book_client.increment_stock(loan.book_id):
+            # Increment book stock (pass auth token)
+            auth_token = request.META.get('HTTP_AUTHORIZATION', '').replace('Bearer ', '')
+            if not book_client.increment_stock(loan.book_id, token=auth_token):
                 raise Exception("Échec de l'incrémentation du stock")
             
             # Create audit log
@@ -470,6 +543,43 @@ def return_loan(request, pk):
                     'days_overdue': days_overdue,
                     'message': f'Amende de {fine_amount} DZD pour {days_overdue} jour(s) de retard'
                 }
+                
+            # Send professional return notification using templates
+            auth_token = request.META.get('HTTP_AUTHORIZATION', '').replace('Bearer ', '')
+            book_data_return = book_client.get_book(loan.book_id)
+            
+            if fine_amount > 0:
+                # Use late return template
+                context = {
+                    'book_title': book_data_return.get('title') if book_data_return else 'Non disponible',
+                    'loan_id': loan.id,
+                    'return_date': loan.return_date.strftime('%d/%m/%Y'),
+                    'due_date': loan.due_date.strftime('%d/%m/%Y'),
+                    'days_overdue': days_overdue,
+                    'fine_amount': fine_amount
+                }
+                logger.info(f"Sending late return notification with context: {context}")
+                send_notification_from_template(
+                    template_name='loan_returned_late',
+                    user_id=request.user.id,
+                    context=context,
+                    token=auth_token
+                )
+            else:
+                # Use on-time return template
+                context = {
+                    'book_title': book_data_return.get('title') if book_data_return else 'Non disponible',
+                    'loan_id': loan.id,
+                    'return_date': loan.return_date.strftime('%d/%m/%Y'),
+                    'due_date': loan.due_date.strftime('%d/%m/%Y')
+                }
+                logger.info(f"Sending on-time return notification with context: {context}")
+                send_notification_from_template(
+                    template_name='loan_returned_ontime',
+                    user_id=request.user.id,
+                    context=context,
+                    token=auth_token
+                )
             
             return Response(response_data, status=status.HTTP_200_OK)
             
@@ -552,6 +662,26 @@ def renew_loan(request, pk):
     )
     
     serializer = LoanSerializer(loan)
+    auth_token = request.META.get('HTTP_AUTHORIZATION', '').replace('Bearer ', '')
+    book_client = BookServiceClient()
+    book_data_renew = book_client.get_book(loan.book_id)
+    
+    old_due_date = (loan.due_date - timedelta(days=14)).strftime('%d/%m/%Y')
+    renewal_message = f'Vous pouvez encore renouveler cet emprunt {2 - loan.renewal_count} fois.' if loan.renewal_count < 2 else 'Attention : Vous avez atteint le nombre maximum de renouvellements (2).'
+    
+    send_notification_from_template(
+        template_name='loan_renewed',
+        user_id=request.user.id,
+        context={
+            'book_title': book_data_renew.get('title') if book_data_renew else 'Non disponible',
+            'loan_id': loan.id,
+            'renewal_count': loan.renewal_count,
+            'old_due_date': old_due_date,
+            'new_due_date': loan.due_date.strftime('%d/%m/%Y'),
+            'renewal_message': renewal_message
+        },
+        token=auth_token
+    )
     return Response(
         {
             'message': 'Emprunt renouvelé avec succès',
@@ -760,4 +890,33 @@ def loan_history(request, pk):
     return Response({
         'loan_id': pk,
         'history': serializer.data
+    })
+    
+    
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, IsLibrarianOrAdmin])
+def send_overdue_notifications(request):
+    """Send notifications to all users with overdue loans"""
+    today = timezone.now().date()
+    overdue_loans = Loan.objects.filter(
+        due_date__lt=today,
+        status__in=['ACTIVE', 'RENEWED', 'OVERDUE']
+    )
+    
+    sent_count = 0
+    for loan in overdue_loans:
+        days_overdue = (today - loan.due_date).days
+        fine = days_overdue * 50
+        
+        if send_notification(
+            user_id=loan.user_id,
+            notification_type='EMAIL',
+            subject='Emprunt en retard',
+            message=f'Votre emprunt est en retard de {days_overdue} jour(s). Amende: {fine} DZD. Veuillez retourner le livre rapidement.'
+        ):
+            sent_count += 1
+    
+    return Response({
+        'message': f'Notifications envoyées à {sent_count} utilisateur(s)',
+        'total_overdue': overdue_loans.count()
     })
