@@ -97,9 +97,30 @@ class RabbitMQClient:
             logger.info(f"📤 Published message to {routing_key}: {message.get('event_type', 'unknown')}")
             return True
             
-        except Exception as e:
-            logger.error(f"❌ Failed to publish message: {e}")
-            return False
+        except (pika.exceptions.ConnectionClosed, pika.exceptions.ChannelClosed, pika.exceptions.StreamLostError, Exception) as e:
+            logger.warning(f"⚠️ Failed to publish message: {e}. Attempting reconnection...")
+            
+            # Force disconnect and reconnect
+            self.disconnect()
+            if self.connect():
+                try:
+                    self.channel.basic_publish(
+                        exchange=self.exchange_name,
+                        routing_key=routing_key,
+                        body=body,
+                        properties=pika.BasicProperties(
+                            delivery_mode=2,
+                            content_type='application/json'
+                        )
+                    )
+                    logger.info(f"📤 Published message after reconnection to {routing_key}")
+                    return True
+                except Exception as retry_e:
+                    logger.error(f"❌ Failed to publish message after retry: {retry_e}")
+                    return False
+            else:
+                logger.error("❌ Failed to reconnect to RabbitMQ")
+                return False
     
     def consume(self, queue_name: str, routing_keys: list, callback: Callable):
         """

@@ -117,24 +117,44 @@ class NotificationConsumer:
             Rendered string
         """
         try:
+            # Create a copy to avoid modifying the original message
+            # This is critical because this function is called twice (subject and body)
+            # and modifying dates in-place causes the second call to fail
+            ctx = context_data.copy()
+            
             # Format dates if present
-            if 'loan_date' in context_data and isinstance(context_data['loan_date'], str):
-                context_data['loan_date'] = datetime.fromisoformat(context_data['loan_date']).strftime('%d/%m/%Y')
+            if 'loan_date' in ctx and isinstance(ctx['loan_date'], str):
+                try:
+                    ctx['loan_date'] = datetime.fromisoformat(ctx['loan_date']).strftime('%d/%m/%Y')
+                except ValueError:
+                    pass # Already formatted or invalid
             
-            if 'due_date' in context_data and isinstance(context_data['due_date'], str):
-                context_data['due_date'] = datetime.fromisoformat(context_data['due_date']).strftime('%d/%m/%Y')
+            if 'due_date' in ctx and isinstance(ctx['due_date'], str):
+                try:
+                    ctx['due_date'] = datetime.fromisoformat(ctx['due_date']).strftime('%d/%m/%Y')
+                except ValueError:
+                    pass
             
-            if 'return_date' in context_data and isinstance(context_data['return_date'], str):
-                context_data['return_date'] = datetime.fromisoformat(context_data['return_date']).strftime('%d/%m/%Y')
+            if 'return_date' in ctx and isinstance(ctx['return_date'], str):
+                try:
+                    ctx['return_date'] = datetime.fromisoformat(ctx['return_date']).strftime('%d/%m/%Y')
+                except ValueError:
+                    pass
             
-            if 'old_due_date' in context_data and isinstance(context_data['old_due_date'], str):
-                context_data['old_due_date'] = datetime.fromisoformat(context_data['old_due_date']).strftime('%d/%m/%Y')
+            if 'old_due_date' in ctx and isinstance(ctx['old_due_date'], str):
+                try:
+                    ctx['old_due_date'] = datetime.fromisoformat(ctx['old_due_date']).strftime('%d/%m/%Y')
+                except ValueError:
+                    pass
             
-            if 'new_due_date' in context_data and isinstance(context_data['new_due_date'], str):
-                context_data['new_due_date'] = datetime.fromisoformat(context_data['new_due_date']).strftime('%d/%m/%Y')
+            if 'new_due_date' in ctx and isinstance(ctx['new_due_date'], str):
+                try:
+                    ctx['new_due_date'] = datetime.fromisoformat(ctx['new_due_date']).strftime('%d/%m/%Y')
+                except ValueError:
+                    pass
             
             template = Template(template_str)
-            context = Context(context_data)
+            context = Context(ctx)
             return template.render(context)
             
         except Exception as e:
