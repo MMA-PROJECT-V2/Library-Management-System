@@ -16,6 +16,13 @@ from .permissions import (
     IsAuthenticated, CanBorrowBook, CanViewLoans, 
     CanViewAllLoans, CanManageLoans, IsLibrarianOrAdmin
 )
+from .events import (
+    publish_loan_created,
+    publish_loan_returned,
+    publish_loan_renewed,
+    publish_loan_overdue
+)
+
 import requests
 from django.conf import settings
 
@@ -307,23 +314,17 @@ def health_check(request):
 #    US7: EMPRUNTER UN LIVRE
 # ============================================
 
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated, CanBorrowBook])
 def create_loan(request):
     """
-    Create a new loan (borrow a book).
-    
-    POST /api/loans/
-    
-    Required permissions: can_borrow_book
+    Create a new loan (borrow a book) - WITH RABBITMQ
     """
     create_serializer = LoanCreateSerializer(data=request.data)
     if not create_serializer.is_valid():
         return Response(
-            {
-                'error': 'Données invalides',
-                'details': create_serializer.errors
-            },
+            {'error': 'Données invalides', 'details': create_serializer.errors},
             status=status.HTTP_400_BAD_REQUEST
         )
     
@@ -343,7 +344,8 @@ def create_loan(request):
     book_client = BookServiceClient()
     
     # 1. Verify user exists and is active
-    if not user_client.is_user_active(user_id):
+    user_data = user_client.get_user(user_id)
+    if not user_data or not user_data.get('is_active'):
         return Response(
             {'error': 'Utilisateur introuvable ou inactif'},
             status=status.HTTP_404_NOT_FOUND
@@ -359,15 +361,11 @@ def create_loan(request):
     
     if book_data.get('available_copies', 0) <= 0:
         return Response(
-            {
-                'error': 'Livre indisponible',
-                'available_copies': 0,
-                'book_title': book_data.get('title')
-            },
+            {'error': 'Livre indisponible', 'book_title': book_data.get('title')},
             status=status.HTTP_400_BAD_REQUEST
         )
     
-    # 3. Verify user has less than 5 active loans
+    # 3-4. Check loan limits and duplicates (same as before)
     active_loans_count = Loan.objects.filter(
         user_id=user_id,
         status__in=['ACTIVE', 'RENEWED', 'OVERDUE']
@@ -375,15 +373,10 @@ def create_loan(request):
     
     if active_loans_count >= 5:
         return Response(
-            {
-                'error': 'Quota d\'emprunts dépassé',
-                'active_loans': active_loans_count,
-                'max_loans': 5
-            },
+            {'error': 'Quota d\'emprunts dépassé', 'active_loans': active_loans_count},
             status=status.HTTP_400_BAD_REQUEST
         )
     
-    # 4. Verify user doesn't already have this book
     if Loan.objects.filter(
         user_id=user_id,
         book_id=book_id,
@@ -397,7 +390,6 @@ def create_loan(request):
     # 5. Create loan with transaction
     try:
         with transaction.atomic():
-            # Calculate due_date (loan_date + 14 days)
             loan_date = timezone.now().date()
             due_date = loan_date + timedelta(days=14)
             
@@ -410,7 +402,7 @@ def create_loan(request):
                 status='ACTIVE'
             )
             
-            # 6. Decrement book stock (pass auth token)
+            # 6. Decrement book stock
             auth_token = request.META.get('HTTP_AUTHORIZATION', '').replace('Bearer ', '')
             if not book_client.decrement_stock(book_id, token=auth_token):
                 raise Exception("Échec de la décrémentation du stock")
@@ -423,25 +415,12 @@ def create_loan(request):
                 details=f"Emprunt créé pour le livre '{book_data.get('title')}'"
             )
             
+            # 8. 🚀 PUBLISH EVENT TO RABBITMQ (replaces direct notification call)
+            user_email = user_data.get('email')
+            publish_loan_created(loan, book_data, user_email)
+            
             serializer = LoanSerializer(loan)
             
-            # Send professional notification email using template
-            auth_token = request.META.get('HTTP_AUTHORIZATION', '').replace('Bearer ', '')
-            
-            send_notification_from_template(
-                template_name='loan_created',
-                user_id=user_id,
-                context={
-                    'book_title': book_data.get('title'),
-                    'book_author': book_data.get('author', 'Non spécifié'),
-                    'book_isbn': book_data.get('isbn', 'Non spécifié'),
-                    'book_category': book_data.get('category', 'Non spécifiée'),
-                    'loan_date': loan.loan_date.strftime('%d/%m/%Y'),
-                    'due_date': loan.due_date.strftime('%d/%m/%Y'),
-                    'loan_id': loan.id
-                },
-                token=auth_token
-            )
             return Response(
                 {
                     'message': 'Emprunt créé avec succès',
@@ -463,25 +442,16 @@ def create_loan(request):
 #    US8: RETOURNER UN LIVRE
 # ============================================
 
+
 @api_view(['PUT'])
 @permission_classes([IsAuthenticated, CanBorrowBook])
 def return_loan(request, pk):
-    """
-    Return a borrowed book.
-    
-    PUT /api/loans/{id}/return/
-    
-    Required permissions: can_borrow_book
-    """
+    """Return a borrowed book - WITH RABBITMQ"""
     try:
         loan = Loan.objects.get(id=pk)
     except Loan.DoesNotExist:
-        return Response(
-            {'error': 'Emprunt non trouvé'},
-            status=status.HTTP_404_NOT_FOUND
-        )
+        return Response({'error': 'Emprunt non trouvé'}, status=status.HTTP_404_NOT_FOUND)
     
-    # Verify user can only return their own loans (unless librarian/admin)
     if not request.user.is_librarian() and not request.user.is_admin():
         if loan.user_id != request.user.id:
             return Response(
@@ -489,7 +459,6 @@ def return_loan(request, pk):
                 status=status.HTTP_403_FORBIDDEN
             )
     
-    # Verify loan is active or overdue
     if loan.status not in ['ACTIVE', 'OVERDUE', 'RENEWED']:
         return Response(
             {'error': f'Ce livre a déjà été retourné (statut: {loan.status})'},
@@ -497,16 +466,17 @@ def return_loan(request, pk):
         )
     
     book_client = BookServiceClient()
+    user_client = UserServiceClient()
     
     try:
         with transaction.atomic():
-            # Mark as returned and calculate fine if overdue
             return_date = timezone.now().date()
             loan.return_date = return_date
             loan.status = 'RETURNED'
             
-            # Calculate fine if overdue (50 DZD per day)
+            # Calculate fine if overdue
             fine_amount = 0
+            days_overdue = 0
             if return_date > loan.due_date:
                 days_overdue = (return_date - loan.due_date).days
                 fine_amount = days_overdue * 50
@@ -514,7 +484,7 @@ def return_loan(request, pk):
             
             loan.save()
             
-            # Increment book stock (pass auth token)
+            # Increment book stock
             auth_token = request.META.get('HTTP_AUTHORIZATION', '').replace('Bearer ', '')
             if not book_client.increment_stock(loan.book_id, token=auth_token):
                 raise Exception("Échec de l'incrémentation du stock")
@@ -531,6 +501,13 @@ def return_loan(request, pk):
                 details=details
             )
             
+            # 🚀 PUBLISH EVENT TO RABBITMQ
+            book_data = book_client.get_book(loan.book_id)
+            user_data = user_client.get_user(loan.user_id)
+            user_email = user_data.get('email') if user_data else None
+            
+            publish_loan_returned(loan, book_data, user_email, fine_amount, days_overdue)
+            
             serializer = LoanSerializer(loan)
             response_data = {
                 'message': 'Livre retourné avec succès',
@@ -543,43 +520,6 @@ def return_loan(request, pk):
                     'days_overdue': days_overdue,
                     'message': f'Amende de {fine_amount} DZD pour {days_overdue} jour(s) de retard'
                 }
-                
-            # Send professional return notification using templates
-            auth_token = request.META.get('HTTP_AUTHORIZATION', '').replace('Bearer ', '')
-            book_data_return = book_client.get_book(loan.book_id)
-            
-            if fine_amount > 0:
-                # Use late return template
-                context = {
-                    'book_title': book_data_return.get('title') if book_data_return else 'Non disponible',
-                    'loan_id': loan.id,
-                    'return_date': loan.return_date.strftime('%d/%m/%Y'),
-                    'due_date': loan.due_date.strftime('%d/%m/%Y'),
-                    'days_overdue': days_overdue,
-                    'fine_amount': fine_amount
-                }
-                logger.info(f"Sending late return notification with context: {context}")
-                send_notification_from_template(
-                    template_name='loan_returned_late',
-                    user_id=request.user.id,
-                    context=context,
-                    token=auth_token
-                )
-            else:
-                # Use on-time return template
-                context = {
-                    'book_title': book_data_return.get('title') if book_data_return else 'Non disponible',
-                    'loan_id': loan.id,
-                    'return_date': loan.return_date.strftime('%d/%m/%Y'),
-                    'due_date': loan.due_date.strftime('%d/%m/%Y')
-                }
-                logger.info(f"Sending on-time return notification with context: {context}")
-                send_notification_from_template(
-                    template_name='loan_returned_ontime',
-                    user_id=request.user.id,
-                    context=context,
-                    token=auth_token
-                )
             
             return Response(response_data, status=status.HTTP_200_OK)
             
@@ -595,26 +535,16 @@ def return_loan(request, pk):
 #    US9: RENOUVELER UN EMPRUNT
 # ============================================
 
+
 @api_view(['PUT'])
 @permission_classes([IsAuthenticated, CanBorrowBook])
 def renew_loan(request, pk):
-    """
-    Renew a loan (extend due date by 14 days).
-    
-    PUT /api/loans/{id}/renew/
-    
-    Max 2 renewals. Cannot renew if overdue.
-    Required permissions: can_borrow_book
-    """
+    """Renew a loan - WITH RABBITMQ"""
     try:
         loan = Loan.objects.get(id=pk)
     except Loan.DoesNotExist:
-        return Response(
-            {'error': 'Emprunt non trouvé'},
-            status=status.HTTP_404_NOT_FOUND
-        )
+        return Response({'error': 'Emprunt non trouvé'}, status=status.HTTP_404_NOT_FOUND)
     
-    # Verify user can only renew their own loans (unless librarian/admin)
     if not request.user.is_librarian() and not request.user.is_admin():
         if loan.user_id != request.user.id:
             return Response(
@@ -622,30 +552,26 @@ def renew_loan(request, pk):
                 status=status.HTTP_403_FORBIDDEN
             )
     
-    # Verify loan status is ACTIVE (not OVERDUE, not RETURNED)
-    if loan.status != 'ACTIVE' and loan.status != 'RENEWED':
+    if loan.status not in ['ACTIVE', 'RENEWED']:
         return Response(
             {'error': f'Impossible de renouveler: statut {loan.status}'},
             status=status.HTTP_400_BAD_REQUEST
         )
     
-    # Verify not overdue
     if loan.is_overdue():
         return Response(
             {'error': 'Impossible de renouveler un emprunt en retard'},
             status=status.HTTP_400_BAD_REQUEST
         )
     
-    # Verify renewal count < max_renewals (2)
     if loan.renewal_count >= loan.max_renewals:
         return Response(
-            {
-                'error': 'Nombre maximum de renouvellements atteint',
-                'renewal_count': loan.renewal_count,
-                'max_renewals': loan.max_renewals
-            },
+            {'error': 'Nombre maximum de renouvellements atteint'},
             status=status.HTTP_400_BAD_REQUEST
         )
+    
+    # Save old due date before updating
+    old_due_date = loan.due_date
     
     # Renew loan
     loan.due_date = loan.due_date + timedelta(days=14)
@@ -661,27 +587,17 @@ def renew_loan(request, pk):
         details=f"Renouvellement #{loan.renewal_count}. Nouvelle date de retour: {loan.due_date}"
     )
     
-    serializer = LoanSerializer(loan)
-    auth_token = request.META.get('HTTP_AUTHORIZATION', '').replace('Bearer ', '')
+    # 🚀 PUBLISH EVENT TO RABBITMQ
     book_client = BookServiceClient()
-    book_data_renew = book_client.get_book(loan.book_id)
+    user_client = UserServiceClient()
     
-    old_due_date = (loan.due_date - timedelta(days=14)).strftime('%d/%m/%Y')
-    renewal_message = f'Vous pouvez encore renouveler cet emprunt {2 - loan.renewal_count} fois.' if loan.renewal_count < 2 else 'Attention : Vous avez atteint le nombre maximum de renouvellements (2).'
+    book_data = book_client.get_book(loan.book_id)
+    user_data = user_client.get_user(loan.user_id)
+    user_email = user_data.get('email') if user_data else None
     
-    send_notification_from_template(
-        template_name='loan_renewed',
-        user_id=request.user.id,
-        context={
-            'book_title': book_data_renew.get('title') if book_data_renew else 'Non disponible',
-            'loan_id': loan.id,
-            'renewal_count': loan.renewal_count,
-            'old_due_date': old_due_date,
-            'new_due_date': loan.due_date.strftime('%d/%m/%Y'),
-            'renewal_message': renewal_message
-        },
-        token=auth_token
-    )
+    publish_loan_renewed(loan, book_data, user_email, old_due_date)
+    
+    serializer = LoanSerializer(loan)
     return Response(
         {
             'message': 'Emprunt renouvelé avec succès',
@@ -691,8 +607,7 @@ def renew_loan(request, pk):
         },
         status=status.HTTP_200_OK
     )
-
-
+    
 # ============================================
 #    US9: CONSULTER EMPRUNTS
 # ============================================
