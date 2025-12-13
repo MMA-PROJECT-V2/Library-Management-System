@@ -12,6 +12,7 @@ from .serializers import (
     UserSerializer, UserDetailSerializer, UserProfileSerializer,
     RegisterSerializer, LoginSerializer
 )
+from .events import publish_user_registered
 import requests
 from django.conf import settings
 import logging
@@ -77,28 +78,24 @@ class RegisterView(APIView):
     """
     permission_classes = [AllowAny]
     
+    
     def post(self, request):
-        """Register a new user and return JWT tokens."""
+        """
+        Register a new user and return JWT tokens.
+        """
         serializer = RegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
         
-        # Generate tokens for the new user
+        # Generate tokens
         refresh = RefreshToken.for_user(user)
-        access_token = str(refresh.access_token)
         
-        # Send welcome email using template
-        send_notification_from_template(
-            template_name='user_registered',
-            user_id=user.id,
-            context={
-                'user_name': user.first_name or user.username,
-                'user_email': user.email,
-                'user_role': user.role
-            },
-            token=access_token
-        )
-        
+        # Publish event
+        try:
+            publish_user_registered(user)
+        except Exception as e:
+            logger.error(f"Failed to publish user_registered event: {e}")
+
         return Response({
             "message": "Inscription réussie.",
             "user": UserSerializer(user).data,
