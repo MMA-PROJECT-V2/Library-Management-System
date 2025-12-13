@@ -11,6 +11,10 @@ from .permissions import (
     CanViewBooks, CanAddBook, CanEditBook, 
     CanDeleteBook, CanBorrowBook, IsLibrarianOrAdmin
 )
+    publish_book_created,
+    publish_book_updated,
+    publish_book_deleted
+)
 import requests
 from django.conf import settings
 import logging
@@ -55,9 +59,17 @@ def get_book(request, id):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated, CanAddBook])
 def create_book(request):
+    """
+    Create a new book.
+    """
     serializer = BookSerializer(data=request.data)
     if serializer.is_valid():
-        serializer.save()
+        book = serializer.save()
+        try:
+            publish_book_created(book)
+        except Exception as e:
+            logger.error(f"Failed to publish book_created event: {e}")
+            
         return Response(serializer.data, status=status.HTTP_201_CREATED)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -65,13 +77,22 @@ def create_book(request):
 @api_view(['PUT'])
 @permission_classes([IsAuthenticated, CanEditBook])
 def update_book(request, id):
+    """
+    Update a book.
+    """
     try:
         book = Book.objects.get(id=id)
     except Book.DoesNotExist:
         return Response({'error': 'Livre non trouvé'}, status=status.HTTP_404_NOT_FOUND)
+        
     serializer = BookSerializer(book, data=request.data)
     if serializer.is_valid():
-        serializer.save()
+        book = serializer.save()
+        try:
+            publish_book_updated(book)
+        except Exception as e:
+            logger.error(f"Failed to publish book_updated event: {e}")
+            
         return Response(serializer.data)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -80,9 +101,6 @@ def update_book(request, id):
 def partial_update_book(request, id):
     """
     Partially update a book.
-    
-    Required permission: can_edit_book
-    Accessible by: Librarians and Admins
     """
     try:
         book = Book.objects.get(id=id)
@@ -91,7 +109,12 @@ def partial_update_book(request, id):
     
     serializer = BookSerializer(book, data=request.data, partial=True)
     if serializer.is_valid():
-        serializer.save()
+        book = serializer.save()
+        try:
+            publish_book_updated(book)
+        except Exception as e:
+            logger.error(f"Failed to publish book_updated event: {e}")
+            
         return Response(serializer.data)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -99,11 +122,23 @@ def partial_update_book(request, id):
 @api_view(['DELETE'])
 @permission_classes([IsAuthenticated, CanDeleteBook])
 def delete_book(request, id):
+    """
+    Delete a book.
+    """
     try:
         book = Book.objects.get(id=id)
     except Book.DoesNotExist:
         return Response({'error': 'Livre non trouvé'}, status=status.HTTP_404_NOT_FOUND)
+    
+    book_id = book.id
+    title = book.title
     book.delete()
+    
+    try:
+        publish_book_deleted(book_id, title)
+    except Exception as e:
+        logger.error(f"Failed to publish book_deleted event: {e}")
+        
     return Response(status=status.HTTP_204_NO_CONTENT)
 
 @api_view(['GET'])
