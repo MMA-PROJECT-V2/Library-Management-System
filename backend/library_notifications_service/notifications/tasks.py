@@ -105,6 +105,7 @@ def send_notification_email(self, notification_id):
         # Log message details for debugging
         logger.info(f"Sending email for notification {notification_id}")
         logger.info(f"Subject: {notif.subject}")
+        logger.info(f"Connecting to SMTP server: {settings.EMAIL_HOST}:{settings.EMAIL_PORT}")
         logger.info(f"Message length: {len(notif.message)} characters")
         logger.debug(f"Full message:\n{notif.message}")
         
