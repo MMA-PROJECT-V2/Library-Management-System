@@ -107,21 +107,35 @@ class LoanConsumer:
     def process_message(self, ch, method, properties, body):
         try:
             message = json.loads(body)
-            event_type = message.get('event_type')
+            routing_key = method.routing_key
             
-            logger.info(f"📨 Received event: {event_type}")
+            print(f"\n📥 [LoanService] Received message on key: {routing_key}")
+            print(f"📦 [LoanService] Payload: {json.dumps(message, indent=2)}")
             
-            if event_type == 'loan_create_request':
-                self.handle_create(message.get('data'))
-            elif event_type == 'loan_return_request':
+            # Determine action based on routing key or event_type
+            if routing_key == 'loan.create_request' or message.get('event_type') == 'loan_create_request':
+                # Handle both direct data (from frontend) and wrapped data (from internal events)
+                data = message.get('data', message)
+                print(f"🔄 [LoanService] Processing CREATE request...")
+                self.handle_create(data)
+                
+            elif routing_key == 'loan.return_request' or message.get('event_type') == 'loan_return_request':
+                print(f"🔄 [LoanService] Processing RETURN request...")
                 self.handle_return(message.get('loan_id'), message.get('user_id'))
-            elif event_type == 'loan_renew_request':
+                
+            elif routing_key == 'loan.renew_request' or message.get('event_type') == 'loan_renew_request':
+                print(f"🔄 [LoanService] Processing RENEW request...")
                 self.handle_renew(message.get('loan_id'), message.get('user_id'))
+            
+            else:
+                print(f"⚠️ [LoanService] Unknown routing key/event type: {routing_key}")
                 
             ch.basic_ack(delivery_tag=method.delivery_tag)
+            print("✅ [LoanService] Message acknowledged")
             
         except Exception as e:
-            logger.error(f"❌ Error processing message: {e}")
+            print(f"❌ [LoanService] Error processing message: {e}")
+            logger.error(f"Error processing message: {e}")
             ch.basic_ack(delivery_tag=method.delivery_tag)
 
     def handle_create(self, data):

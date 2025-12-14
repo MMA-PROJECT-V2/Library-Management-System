@@ -106,7 +106,7 @@ def send_from_template(request):
     return Response(NotificationSerializer(notif).data, status=status.HTTP_201_CREATED)
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated, CanViewNotifications])
+@permission_classes([IsAuthenticated])
 def user_notifications(request):
     """
     GET /notifications/user_notifications/

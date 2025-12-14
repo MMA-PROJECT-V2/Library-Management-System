@@ -37,18 +37,28 @@ class UserConsumer:
         """Process incoming RabbitMQ message"""
         try:
             message = json.loads(body)
-            event_type = message.get('event_type')
+            routing_key = method.routing_key
             
-            logger.info(f"📨 Received event: {event_type}")
+            print(f"\n📥 [UserService] Received message on key: {routing_key}")
+            print(f"📦 [UserService] Payload: {json.dumps(message, indent=2)}")
             
-            if event_type == 'user_create':
-                self.handle_user_create(message.get('data'))
+            # Determine action based on routing key or event_type
+            if routing_key == 'user.create' or message.get('event_type') == 'user_create':
+                # Handle both direct data (from frontend) and wrapped data (from internal events)
+                data = message.get('data', message)
+                print(f"🔄 [UserService] Processing CREATE request...")
+                self.handle_user_create(data)
                 
+            else:
+                print(f"⚠️ [UserService] Unknown routing key/event type: {routing_key}")
+
             # Acknowledge message
             ch.basic_ack(delivery_tag=method.delivery_tag)
+            print("✅ [UserService] Message acknowledged")
             
         except Exception as e:
-            logger.error(f"❌ Error processing message: {e}")
+            print(f"❌ [UserService] Error processing message: {e}")
+            logger.error(f"Error processing message: {e}")
             # Negative Acknowledge (requeue if transient, reject if malformed)
             # For now, we ack to avoid infinite looks on bad data
             ch.basic_ack(delivery_tag=method.delivery_tag)

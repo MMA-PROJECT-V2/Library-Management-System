@@ -42,22 +42,38 @@ class BookConsumer:
         """Process incoming RabbitMQ message"""
         try:
             message = json.loads(body)
-            event_type = message.get('event_type')
+            routing_key = method.routing_key
             
-            logger.info(f"📨 Received event: {event_type}")
+            print(f"\n📥 [BookService] Received message on key: {routing_key}")
+            print(f"📦 [BookService] Payload: {json.dumps(message, indent=2)}")
             
-            if event_type == 'book_create_request':
-                self.handle_create(message.get('data'))
-            elif event_type == 'book_update_request':
-                self.handle_update(message.get('book_id'), message.get('data'))
-            elif event_type == 'book_delete_request':
-                self.handle_delete(message.get('book_id'))
+            # Determine action based on routing key or event_type
+            if routing_key == 'book.create_request' or message.get('event_type') == 'book_create_request':
+                # Handle both direct data (from frontend) and wrapped data (from internal events)
+                data = message.get('data', message)
+                print(f"🔄 [BookService] Processing CREATE request...")
+                self.handle_create(data)
                 
+            elif routing_key == 'book.update_request' or message.get('event_type') == 'book_update_request':
+                print(f"🔄 [BookService] Processing UPDATE request...")
+                self.handle_update(message.get('book_id'), message.get('data'))
+                
+            elif routing_key == 'book.delete_request' or message.get('event_type') == 'book_delete_request':
+                print(f"🔄 [BookService] Processing DELETE request...")
+                self.handle_delete(message.get('book_id'))
+            
+            else:
+                print(f"⚠️ [BookService] Unknown routing key/event type: {routing_key}")
+
             # Acknowledge message
             ch.basic_ack(delivery_tag=method.delivery_tag)
+            print("✅ [BookService] Message acknowledged")
             
         except Exception as e:
-            logger.error(f"❌ Error processing message: {e}")
+            print(f"❌ [BookService] Error processing message: {e}")
+            logger.error(f"Error processing message: {e}")
+            # Still acknowledge to prevent infinite loops for bad messages, 
+            # ideally should dead-letter
             ch.basic_ack(delivery_tag=method.delivery_tag)
 
     def handle_create(self, data):

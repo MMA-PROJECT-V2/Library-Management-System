@@ -11,6 +11,7 @@ from .permissions import (
     CanViewBooks, CanAddBook, CanEditBook, 
     CanDeleteBook, CanBorrowBook, IsLibrarianOrAdmin
 )
+from .events import (
     publish_book_created,
     publish_book_updated,
     publish_book_deleted
