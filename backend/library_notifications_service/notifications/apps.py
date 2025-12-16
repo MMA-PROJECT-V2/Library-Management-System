@@ -24,8 +24,9 @@ class NotificationsConfig(AppConfig):
 
         try:
             from common.consul_client import ConsulClient
+            from decouple import config
 
-            if not settings.DEBUG or settings.config('REGISTER_CONSUL', default=False, cast=bool):
+            if not settings.DEBUG or config('REGISTER_CONSUL', default=False, cast=bool):
                  # Register service
                 consul_client = ConsulClient(
                     host=settings.CONSUL_HOST,
