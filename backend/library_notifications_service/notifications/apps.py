@@ -13,8 +13,46 @@ class NotificationsConfig(AppConfig):
         # Import here to avoid AppRegistryNotReady error
         from .models import NotificationTemplate
         import logging
-        
+        import sys
+        from django.conf import settings
+        import atexit
+
+        # Add backend directory to sys.path to allow importing common modules
+        sys.path.append(str(settings.BASE_DIR.parent))
+
         logger = logging.getLogger(__name__)
+
+        try:
+            from common.consul_client import ConsulClient
+
+            if not settings.DEBUG or settings.config('REGISTER_CONSUL', default=False, cast=bool):
+                 # Register service
+                consul_client = ConsulClient(
+                    host=settings.CONSUL_HOST,
+                    port=settings.CONSUL_PORT
+                )
+
+                def deregister():
+                    consul_client.deregister_service(settings.SERVICE_ID)
+
+                if consul_client.register_service(
+                    service_name=settings.SERVICE_NAME,
+                    service_id=settings.SERVICE_ID,
+                    address=settings.SERVICE_ADDRESS,
+                    port=settings.SERVICE_PORT,
+                    tags=settings.SERVICE_TAGS
+                ):
+                    atexit.register(deregister)
+            else:
+                logger.info("Skipping Consul registration in DEBUG mode (set REGISTER_CONSUL=True to enable)")
+
+        except ImportError:
+            pass
+        except Exception as e:
+             # We don't want to break startup if consul fails
+            logger.warning(f"Consul registration failed: {e}")
+        
+        # Define all templates
         
         # Define all templates
         templates = [
