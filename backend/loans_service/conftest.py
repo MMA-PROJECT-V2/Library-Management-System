@@ -25,8 +25,7 @@ def user(db):
         email='test@example.com',
         password='testpass123',
         first_name='Test',
-        last_name='User',
-        role='MEMBER'
+        last_name='User'
     )
 
 
@@ -39,7 +38,7 @@ def librarian(db):
         password='libpass123',
         first_name='Lib',
         last_name='Rarian',
-        role='LIBRARIAN'
+        is_staff=True
     )
 
 
