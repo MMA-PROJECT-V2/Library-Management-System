@@ -156,6 +156,19 @@ SERVICES = {
 }
 
 # ============================================
+#    CONSUL CONFIGURATION
+# ============================================
+
+import socket
+CONSUL_HOST = config('CONSUL_HOST', default='consul')
+CONSUL_PORT = config('CONSUL_PORT', default=8500, cast=int)
+SERVICE_NAME = 'loans-service'
+SERVICE_TAGS = ['loans', 'backend']
+SERVICE_ID = f"{SERVICE_NAME}-{socket.gethostname()}"
+SERVICE_ADDRESS = config('SERVICE_ADDRESS', default=socket.gethostbyname(socket.gethostname()))
+SERVICE_PORT = config('SERVICE_PORT', default=8003, cast=int)
+
+# ============================================
 #    LOGGING CONFIGURATION
 # ============================================
 

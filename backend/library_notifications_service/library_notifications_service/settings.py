@@ -222,6 +222,19 @@ SERVICES = {
     'NOTIFICATION_SERVICE': config('NOTIFICATION_SERVICE_URL', default='http://localhost:8004'),
 }
 
+# ============================================
+#    CONSUL CONFIGURATION
+# ============================================
+
+import socket
+CONSUL_HOST = config('CONSUL_HOST', default='consul')
+CONSUL_PORT = config('CONSUL_PORT', default=8500, cast=int)
+SERVICE_NAME = 'notification-service'
+SERVICE_TAGS = ['notifications', 'backend']
+SERVICE_ID = f"{SERVICE_NAME}-{socket.gethostname()}"
+SERVICE_ADDRESS = config('SERVICE_ADDRESS', default=socket.gethostbyname(socket.gethostname()))
+SERVICE_PORT = config('SERVICE_PORT', default=8004, cast=int)
+
 # Backward compatibility aliases
 USER_SERVICE_URL = SERVICES['USER_SERVICE']
 BOOK_SERVICE_URL = SERVICES['BOOK_SERVICE']

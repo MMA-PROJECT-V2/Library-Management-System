@@ -183,6 +183,19 @@ SERVICES = {
 }
 
 # ============================================
+#    CONSUL CONFIGURATION
+# ============================================
+
+import socket
+CONSUL_HOST = config('CONSUL_HOST', default='consul')
+CONSUL_PORT = config('CONSUL_PORT', default=8500, cast=int)
+SERVICE_NAME = 'books-service'
+SERVICE_TAGS = ['books', 'backend']
+SERVICE_ID = f"{SERVICE_NAME}-{socket.gethostname()}"
+SERVICE_ADDRESS = config('SERVICE_ADDRESS', default=socket.gethostbyname(socket.gethostname()))
+SERVICE_PORT = config('SERVICE_PORT', default=8000, cast=int) # Default Django port, typically overridden by env
+
+# ============================================
 #    AUTHENTICATION SETTINGS
 # ============================================
 
