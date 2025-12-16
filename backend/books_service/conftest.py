@@ -8,7 +8,7 @@ PROJECT_ROOT = os.path.dirname(__file__)
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'books_service.settings')
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'books_service.test_settings')
 
 # Configure Django for pytest
 django.setup()
