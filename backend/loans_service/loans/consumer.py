@@ -31,14 +31,27 @@ logger = logging.getLogger(__name__)
 
 # --- Service Clients (Replicated from views.py for standalone consumer usage) ---
 
+
+from common.consul_client import ConsulClient
+
 class UserServiceClient:
     def __init__(self):
-        self.base_url = os.getenv('USER_SERVICE_URL', 'http://localhost:8001')
+        self.consul = ConsulClient(host=settings.CONSUL_HOST, port=settings.CONSUL_PORT)
+        self.service_name = 'user-service'
+        self.fallback_url = os.getenv('USER_SERVICE_URL', 'http://localhost:8001')
         self.timeout = 10
     
+    def get_base_url(self):
+        url = self.consul.get_service_url(self.service_name)
+        if not url:
+            logger.warning(f"Could not resolve {self.service_name}, using fallback: {self.fallback_url}")
+            return self.fallback_url
+        return url
+
     def get_user(self, user_id: int) -> Optional[Dict[str, Any]]:
+        base_url = self.get_base_url()
         try:
-            response = requests.get(f"{self.base_url}/api/users/{user_id}/", timeout=self.timeout)
+            response = requests.get(f"{base_url}/api/users/{user_id}/", timeout=self.timeout)
             if response.status_code == 200:
                 logger.info(f"✅ User {user_id} found")
                 return response.json()
@@ -51,12 +64,22 @@ class UserServiceClient:
 
 class BookServiceClient:
     def __init__(self):
-        self.base_url = os.getenv('BOOK_SERVICE_URL', 'http://localhost:8002')
+        self.consul = ConsulClient(host=settings.CONSUL_HOST, port=settings.CONSUL_PORT)
+        self.service_name = 'books-service'
+        self.fallback_url = os.getenv('BOOK_SERVICE_URL', 'http://localhost:8002')
         self.timeout = 10
     
+    def get_base_url(self):
+        url = self.consul.get_service_url(self.service_name)
+        if not url:
+            logger.warning(f"Could not resolve {self.service_name}, using fallback: {self.fallback_url}")
+            return self.fallback_url
+        return url
+
     def get_book(self, book_id: int) -> Optional[Dict[str, Any]]:
+        base_url = self.get_base_url()
         try:
-            response = requests.get(f"{self.base_url}/api/books/{book_id}/", timeout=self.timeout)
+            response = requests.get(f"{base_url}/api/books/{book_id}/", timeout=self.timeout)
             if response.status_code == 200:
                 logger.info(f"✅ Book {book_id} found")
                 return response.json()
@@ -70,8 +93,9 @@ class BookServiceClient:
     def decrement_stock(self, book_id: int) -> bool:
         # Note: Internal call, bypassing auth/permissions for simplicity since it's service-to-service
         # Ideally should use an internal API key
+        base_url = self.get_base_url()
         try:
-            url = f"{self.base_url}/api/books/{book_id}/borrow/"
+            url = f"{base_url}/api/books/{book_id}/borrow/"
             response = requests.post(url, timeout=self.timeout)
             return response.status_code == 200
         except Exception as e:
@@ -79,8 +103,9 @@ class BookServiceClient:
             return False
 
     def increment_stock(self, book_id: int) -> bool:
+        base_url = self.get_base_url()
         try:
-            url = f"{self.base_url}/api/books/{book_id}/return/"
+            url = f"{base_url}/api/books/{book_id}/return/"
             response = requests.post(url, timeout=self.timeout)
             return response.status_code == 200
         except Exception as e:

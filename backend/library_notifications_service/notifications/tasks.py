@@ -12,19 +12,29 @@ from .models import Notification, NotificationLog
 logger = logging.getLogger(__name__)
 
 
+
+from common.consul_client import ConsulClient
+
 def get_user_email(user_id):
     """
     Fetch user email from the User Service API.
     
     This integrates with your microservices architecture by calling
-    the User Service to get real-time user data.
+    the User Service to get real-time user data using Consul for discovery.
     """
     try:
+        # Resolve service URL via Consul
+        consul = ConsulClient(host=settings.CONSUL_HOST, port=settings.CONSUL_PORT)
+        user_service_url = consul.get_service_url('user-service')
+        
+        if not user_service_url:
+            user_service_url = getattr(settings, 'USER_SERVICE_URL', 'http://localhost:8001')
+            logger.warning(f"Consul resolution failed for user-service, using fallback: {user_service_url}")
+
         # Call User Service API
-        user_service_url = settings.USER_SERVICE_URL
         response = requests.get(
             f"{user_service_url}/api/users/{user_id}/",
-            timeout=settings.USER_SERVICE_TIMEOUT
+            timeout=getattr(settings, 'USER_SERVICE_TIMEOUT', 5)
         )
         
         if response.status_code == 200:
@@ -55,10 +65,17 @@ def get_user_phone(user_id):
     Fetch user phone number from the User Service API.
     """
     try:
-        user_service_url = settings.USER_SERVICE_URL
+        # Resolve service URL via Consul
+        consul = ConsulClient(host=settings.CONSUL_HOST, port=settings.CONSUL_PORT)
+        user_service_url = consul.get_service_url('user-service')
+        
+        if not user_service_url:
+            user_service_url = getattr(settings, 'USER_SERVICE_URL', 'http://localhost:8001')
+            logger.warning(f"Consul resolution failed for user-service, using fallback: {user_service_url}")
+
         response = requests.get(
             f"{user_service_url}/api/users/{user_id}/",
-            timeout=settings.USER_SERVICE_TIMEOUT
+            timeout=getattr(settings, 'USER_SERVICE_TIMEOUT', 5)
         )
         
         if response.status_code == 200:

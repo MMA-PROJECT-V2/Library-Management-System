@@ -3,6 +3,12 @@ from rest_framework.authentication import BaseAuthentication
 from rest_framework.exceptions import AuthenticationFailed
 from django.conf import settings
 
+
+from common.consul_client import ConsulClient
+import logging
+
+logger = logging.getLogger(__name__)
+
 class JWTAuthentication(BaseAuthentication):
     def authenticate(self, request):
         auth_header = request.headers.get('Authorization')
@@ -33,7 +39,13 @@ class JWTAuthentication(BaseAuthentication):
         Raises:
             AuthenticationFailed: If token is invalid
         """
-        user_service_url = settings.SERVICES.get('USER_SERVICE', 'http://localhost:8001')
+        consul = ConsulClient(host=settings.CONSUL_HOST, port=settings.CONSUL_PORT)
+        user_service_url = consul.get_service_url('user-service')
+        
+        if not user_service_url:
+            user_service_url = settings.SERVICES.get('USER_SERVICE', 'http://localhost:8001')
+            logger.warning(f"Consul resolution failed for user-service, using fallback: {user_service_url}")
+
         validate_url = f"{user_service_url}/api/users/validate/"
         
         try:

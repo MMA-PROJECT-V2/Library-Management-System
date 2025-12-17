@@ -6,6 +6,8 @@ Handles connection, publishing, and consuming messages
 import pika
 import json
 import logging
+import os
+import sys
 from typing import Callable, Dict, Any
 from decouple import config
 
@@ -14,22 +16,52 @@ logger = logging.getLogger(__name__)
 
 class RabbitMQClient:
     """RabbitMQ Client for publishing and consuming messages"""
-    
+
     def __init__(self):
-        self.host = config('RABBITMQ_HOST', default='localhost')
-        self.port = config('RABBITMQ_PORT', default=5672, cast=int)
-        self.username = config('RABBITMQ_USER', default='guest')
-        self.password = config('RABBITMQ_PASSWORD', default='guest')
-        self.virtual_host = config('RABBITMQ_VHOST', default='/')
-        
+        # Try to discover RabbitMQ from Consul
+        rabbitmq_host = None
+        rabbitmq_port = None
+
+        try:
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            if current_dir not in sys.path:
+                sys.path.insert(0, current_dir)
+
+            from common.consul_utils import get_service
+
+            rabbitmq_url = get_service("rabbitmq")
+            if rabbitmq_url:
+                # Remove protocol if present
+                if "://" in rabbitmq_url:
+                    rabbitmq_url = rabbitmq_url.split("://")[1]
+                
+                if ":" in rabbitmq_url:
+                    rabbitmq_host, port_str = rabbitmq_url.split(":")
+                    rabbitmq_port = int(port_str)
+                else:
+                    rabbitmq_host = rabbitmq_url
+                    rabbitmq_port = 5672
+
+                logger.info(f"✅ Discovered RabbitMQ from Consul: {rabbitmq_host}:{rabbitmq_port}")
+
+        except Exception as e:
+            logger.warning(f"Could not discover RabbitMQ from Consul: {e}")
+
+        # Fallbacks
+        self.host = rabbitmq_host or config("RABBITMQ_HOST", default="localhost")
+        self.port = rabbitmq_port or config("RABBITMQ_PORT", default=5672, cast=int)
+
+        self.username = config("RABBITMQ_USER", default="guest")
+        self.password = config("RABBITMQ_PASSWORD", default="guest")
+        self.virtual_host = config("RABBITMQ_VHOST", default="/")
+
         self.connection = None
         self.channel = None
-        
-        # Exchange configuration
-        self.exchange_name = 'library_events'
-        self.exchange_type = 'topic'
-    
-    def connect(self):
+
+        self.exchange_name = "library_events"
+        self.exchange_type = "topic"
+
+    def connect(self) -> bool:
         """Establish connection to RabbitMQ"""
         try:
             credentials = pika.PlainCredentials(self.username, self.password)
@@ -39,26 +71,25 @@ class RabbitMQClient:
                 virtual_host=self.virtual_host,
                 credentials=credentials,
                 heartbeat=600,
-                blocked_connection_timeout=300
+                blocked_connection_timeout=300,
             )
-            
+
             self.connection = pika.BlockingConnection(parameters)
             self.channel = self.connection.channel()
-            
-            # Declare exchange
+
             self.channel.exchange_declare(
                 exchange=self.exchange_name,
                 exchange_type=self.exchange_type,
-                durable=True
+                durable=True,
             )
-            
+
             logger.info(f"✅ Connected to RabbitMQ at {self.host}:{self.port}")
             return True
-            
+
         except Exception as e:
             logger.error(f"❌ Failed to connect to RabbitMQ: {e}")
             return False
-    
+
     def disconnect(self):
         """Close RabbitMQ connection"""
         try:
@@ -67,41 +98,34 @@ class RabbitMQClient:
                 logger.info("✅ Disconnected from RabbitMQ")
         except Exception as e:
             logger.error(f"❌ Error disconnecting from RabbitMQ: {e}")
-    
-    def publish(self, routing_key: str, message: Dict[Any, Any]):
-        """
-        Publish message to RabbitMQ exchange
-        
-        Args:
-            routing_key: Routing key (e.g., 'notification.email.loan_created')
-            message: Dictionary containing message data
-        """
+
+    def publish(self, routing_key: str, message: Dict[Any, Any]) -> bool:
+        """Publish message to RabbitMQ exchange"""
         if not self.channel:
             if not self.connect():
                 logger.error("Cannot publish: Not connected to RabbitMQ")
                 return False
-        
+
         try:
             body = json.dumps(message, default=str)
-            
+
             self.channel.basic_publish(
                 exchange=self.exchange_name,
                 routing_key=routing_key,
                 body=body,
                 properties=pika.BasicProperties(
-                    delivery_mode=2,  # Make message persistent
-                    content_type='application/json'
-                )
+                    delivery_mode=2,
+                    content_type="application/json",
+                ),
             )
-            
-            logger.info(f"📤 Published message to {routing_key}: {message.get('event_type', 'unknown')}")
+
+            logger.info(f"📤 Published message to {routing_key}")
             return True
-            
-        except (pika.exceptions.ConnectionClosed, pika.exceptions.ChannelClosed, pika.exceptions.StreamLostError, Exception) as e:
-            logger.warning(f"⚠️ Failed to publish message: {e}. Attempting reconnection...")
-            
-            # Force disconnect and reconnect
+
+        except Exception as e:
+            logger.warning(f"⚠️ Publish failed: {e}. Retrying...")
             self.disconnect()
+
             if self.connect():
                 try:
                     self.channel.basic_publish(
@@ -110,76 +134,60 @@ class RabbitMQClient:
                         body=body,
                         properties=pika.BasicProperties(
                             delivery_mode=2,
-                            content_type='application/json'
-                        )
+                            content_type="application/json",
+                        ),
                     )
-                    logger.info(f"📤 Published message after reconnection to {routing_key}")
+                    logger.info("📤 Published message after reconnect")
                     return True
                 except Exception as retry_e:
-                    logger.error(f"❌ Failed to publish message after retry: {retry_e}")
-                    return False
-            else:
-                logger.error("❌ Failed to reconnect to RabbitMQ")
-                return False
-    
+                    logger.error(f"❌ Retry failed: {retry_e}")
+
+            return False
+
     def consume(self, queue_name: str, routing_keys: list, callback: Callable):
-        """
-        Start consuming messages from queue
-        
-        Args:
-            queue_name: Name of the queue
-            routing_keys: List of routing keys to bind (e.g., ['notification.email.*'])
-            callback: Function to handle received messages
-        """
+        """Consume messages from queue"""
         if not self.channel:
             if not self.connect():
                 logger.error("Cannot consume: Not connected to RabbitMQ")
                 return
-        
+
         try:
-            # Declare queue
             self.channel.queue_declare(queue=queue_name, durable=True)
-            
-            # Bind queue to exchange with routing keys
+
             for routing_key in routing_keys:
                 self.channel.queue_bind(
                     exchange=self.exchange_name,
                     queue=queue_name,
-                    routing_key=routing_key
+                    routing_key=routing_key,
                 )
-                logger.info(f"🔗 Bound queue '{queue_name}' to routing key '{routing_key}'")
-            
-            # Set QoS (Fair dispatch - don't send more than 1 message at a time)
+
             self.channel.basic_qos(prefetch_count=1)
-            
-            # Start consuming
             self.channel.basic_consume(
                 queue=queue_name,
                 on_message_callback=callback,
-                auto_ack=False  # Manual acknowledgment
+                auto_ack=False,
             )
-            
-            logger.info(f"👂 Waiting for messages on queue '{queue_name}'...")
+
+            logger.info(f"👂 Consuming from queue '{queue_name}'")
             self.channel.start_consuming()
-            
+
         except KeyboardInterrupt:
-            logger.info("🛑 Stopping consumer...")
+            logger.info("🛑 Consumer stopped")
             self.stop_consuming()
         except Exception as e:
-            logger.error(f"❌ Error in consumer: {e}")
-    
+            logger.error(f"❌ Consumer error: {e}")
+
     def stop_consuming(self):
-        """Stop consuming messages"""
         if self.channel:
             self.channel.stop_consuming()
         self.disconnect()
 
 
-# Singleton instance
+# Singleton
 _rabbitmq_client = None
 
+
 def get_rabbitmq_client() -> RabbitMQClient:
-    """Get or create RabbitMQ client singleton"""
     global _rabbitmq_client
     if _rabbitmq_client is None:
         _rabbitmq_client = RabbitMQClient()

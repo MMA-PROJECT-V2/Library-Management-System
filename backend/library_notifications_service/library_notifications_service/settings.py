@@ -26,7 +26,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = config('SECRET_KEY', default='django-insecure-change-this-in-production')
 DEBUG = config('DEBUG', default=True, cast=bool)
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1').split(',')
+ALLOWED_HOSTS =["*"]
 
 # ============================================
 # INSTALLED APPS
@@ -227,12 +227,17 @@ SERVICES = {
 # ============================================
 
 import socket
+import sys
+# Make sure we can import from common
+sys.path.append(str(BASE_DIR.parent))
+from common.consul_utils import get_ip_address
+
 CONSUL_HOST = config('CONSUL_HOST', default='consul')
 CONSUL_PORT = config('CONSUL_PORT', default=8500, cast=int)
 SERVICE_NAME = 'notification-service'
 SERVICE_TAGS = ['notifications', 'backend']
 SERVICE_ID = f"{SERVICE_NAME}-{socket.gethostname()}"
-SERVICE_ADDRESS = config('SERVICE_ADDRESS', default=socket.gethostbyname(socket.gethostname()))
+SERVICE_ADDRESS = config('SERVICE_ADDRESS', default=get_ip_address())
 SERVICE_PORT = config('SERVICE_PORT', default=8004, cast=int)
 
 # Backward compatibility aliases

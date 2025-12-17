@@ -9,7 +9,7 @@ import requests
 import logging
 import os
 from typing import Optional, Dict, Any
-
+from django.http import JsonResponse
 from .models import Loan, LoanHistory
 from .serializers import LoanSerializer, LoanCreateSerializer, LoanHistorySerializer
 from .permissions import (
@@ -26,8 +26,9 @@ from .events import (
 import requests
 from django.conf import settings
 
-logger = logging.getLogger(__name__)
 
+
+from common.consul_client import ConsulClient
 
 def send_notification_from_template(template_name, user_id, context, token=None):
     """Helper to send notifications using templates via Notification Service"""
@@ -42,8 +43,17 @@ def send_notification_from_template(template_name, user_id, context, token=None)
         logger.warning("Sending notification WITHOUT token - this may fail!")
             
     try:
+        # Resolve service URL via Consul
+        consul = ConsulClient(host=settings.CONSUL_HOST, port=settings.CONSUL_PORT)
+        service_url = consul.get_service_url('notification-service')
+        
+        if not service_url:
+            # Fallback to default or env var if Consul fails
+            service_url = settings.SERVICES.get('NOTIFICATION_SERVICE', 'http://localhost:8004')
+            logger.warning(f"Consul resolution failed for notification-service, using fallback: {service_url}")
+        
         response = requests.post(
-            f"{settings.SERVICES.get('NOTIFICATION_SERVICE', 'http://localhost:8004')}/api/notifications/send_from_template/",
+            f"{service_url}/api/notifications/send_from_template/",
             json={
                 'template_id': get_template_id(template_name),
                 'user_id': user_id,
@@ -78,13 +88,22 @@ def get_template_id(template_name):
 
 class UserServiceClient:
     """
-    Client HTTP pour communiquer avec le User Service
+    Client HTTP pour communiquer avec le User Service via Consul
     """
     
     def __init__(self):
-        self.base_url = os.getenv('USER_SERVICE_URL', 'http://localhost:8001')
+        self.consul = ConsulClient(host=settings.CONSUL_HOST, port=settings.CONSUL_PORT)
+        self.service_name = 'user-service'
+        self.fallback_url = os.getenv('USER_SERVICE_URL', 'http://localhost:8001')
         self.timeout = 10  # secondes
     
+    def get_base_url(self):
+        url = self.consul.get_service_url(self.service_name)
+        if not url:
+            logger.warning(f"Could not resolve {self.service_name}, using fallback: {self.fallback_url}")
+            return self.fallback_url
+        return url
+
     def get_user(self, user_id: int) -> Optional[Dict[str, Any]]:
         """
         Récupérer les informations d'un utilisateur
@@ -95,7 +114,8 @@ class UserServiceClient:
         Returns:
             Dict avec les infos de l'utilisateur ou None si erreur
         """
-        url = f"{self.base_url}/api/users/{user_id}/"
+        base_url = self.get_base_url()
+        url = f"{base_url}/api/users/{user_id}/"
         
         try:
             response = requests.get(url, timeout=self.timeout)
@@ -153,13 +173,22 @@ class UserServiceClient:
 
 class BookServiceClient:
     """
-    Client HTTP pour communiquer avec le Books Service
+    Client HTTP pour communiquer avec le Books Service via Consul
     """
     
     def __init__(self):
-        self.base_url = os.getenv('BOOK_SERVICE_URL', 'http://localhost:8002')
+        self.consul = ConsulClient(host=settings.CONSUL_HOST, port=settings.CONSUL_PORT)
+        self.service_name = 'books-service'
+        self.fallback_url = os.getenv('BOOK_SERVICE_URL', 'http://localhost:8002')
         self.timeout = 10
     
+    def get_base_url(self):
+        url = self.consul.get_service_url(self.service_name)
+        if not url:
+            logger.warning(f"Could not resolve {self.service_name}, using fallback: {self.fallback_url}")
+            return self.fallback_url
+        return url
+
     def get_book(self, book_id: int) -> Optional[Dict[str, Any]]:
         """
         Récupérer les informations d'un livre.
@@ -170,7 +199,8 @@ class BookServiceClient:
         Returns:
             Dict avec les infos du livre ou None si erreur
         """
-        url = f"{self.base_url}/api/books/{book_id}/"
+        base_url = self.get_base_url()
+        url = f"{base_url}/api/books/{book_id}/"
         
         try:
             response = requests.get(url, timeout=self.timeout)
@@ -230,11 +260,6 @@ class BookServiceClient:
         """
         Décrémenter le stock d'un livre (emprunt).
         
-        Note: The Books Service should have an endpoint like:
-        POST /api/books/{id}/borrow/
-        
-        For now, we'll use the borrow endpoint if it exists.
-        
         Args:
             book_id: ID du livre
             token: JWT token for authentication
@@ -242,7 +267,8 @@ class BookServiceClient:
         Returns:
             True si succès, False sinon
         """
-        url = f"{self.base_url}/api/books/{book_id}/borrow/"
+        base_url = self.get_base_url()
+        url = f"{base_url}/api/books/{book_id}/borrow/"
         headers = {}
         if token:
             headers['Authorization'] = f"Bearer {token}"
@@ -265,9 +291,6 @@ class BookServiceClient:
         """
         Incrémenter le stock d'un livre (retour).
         
-        Note: The Books Service should have an endpoint like:
-        POST /api/books/{id}/return/
-        
         Args:
             book_id: ID du livre
             token: JWT token for authentication
@@ -275,7 +298,8 @@ class BookServiceClient:
         Returns:
             True si succès, False sinon
         """
-        url = f"{self.base_url}/api/books/{book_id}/return/"
+        base_url = self.get_base_url()
+        url = f"{base_url}/api/books/{book_id}/return/"
         headers = {}
         if token:
             headers['Authorization'] = f"Bearer {token}"
@@ -303,11 +327,7 @@ class BookServiceClient:
 @permission_classes([AllowAny])
 def health_check(request):
     """Health check endpoint."""
-    return Response({
-        'status': 'healthy',
-        'service': 'loans',
-        'timestamp': timezone.now()
-    })
+    return JsonResponse({"status": "ok"}, status=200)
 
 
 # ============================================

@@ -4,7 +4,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 class ConsulClient:
-    def __init__(self, host='consul', port=8500):
+    def __init__(self, host='127.0.0.1', port=8502):
         try:
             self.client = consul.Consul(host=host, port=port)
         except Exception as e:
@@ -46,3 +46,36 @@ class ConsulClient:
         except Exception as e:
             logger.error(f"Failed to deregister service {service_id} from Consul: {e}")
             return False
+
+    def get_service_url(self, service_name):
+        """
+        Discover service URL from Consul.
+        Returns the address:port of a healthy instance of the service.
+        """
+        if not self.client:
+            logger.warning("Consul client not initialized. Cannot discover service.")
+            return None
+
+        try:
+            # Get all services with the given name
+            index, services = self.client.health.service(service_name, passing=True)
+            
+            if not services:
+                logger.warning(f"No healthy instances found for service: {service_name}")
+                return None
+            
+            # Simple load balancing: pick the first one (or random)
+            # For now, just pick the first one
+            service = services[0]['Service']
+            address = service['Address']
+            port = service['Port']
+            
+            # If address is empty (sometimes happens with agent registration), use node address
+            if not address:
+                address = services[0]['Node']['Address']
+            
+            return f"http://{address}:{port}"
+            
+        except Exception as e:
+            logger.error(f"Failed to discover service {service_name}: {e}")
+            return None

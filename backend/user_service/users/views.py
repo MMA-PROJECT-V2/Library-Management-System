@@ -1,12 +1,13 @@
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
+from rest_framework.decorators import api_view, permission_classes
 from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken, AccessToken
 from rest_framework_simplejwt.exceptions import TokenError
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
-
+from django.http import JsonResponse
 from .models import User, UserProfile
 from .serializers import (
     UserSerializer, UserDetailSerializer, UserProfileSerializer,
@@ -17,9 +18,9 @@ import requests
 from django.conf import settings
 import logging
 
-logger = logging.getLogger(__name__)
 
 
+from common.consul_client import ConsulClient
 
 def send_notification_from_template(template_name, user_id, context, token=None):
     """Helper to send notifications using templates via Notification Service"""
@@ -31,8 +32,16 @@ def send_notification_from_template(template_name, user_id, context, token=None)
             headers['Authorization'] = f"Bearer {token}"
             
     try:
+        # Resolve service URL via Consul
+        consul = ConsulClient(host=settings.CONSUL_HOST, port=settings.CONSUL_PORT)
+        service_url = consul.get_service_url('notification-service')
+        
+        if not service_url:
+            service_url = settings.SERVICES.get('NOTIFICATION_SERVICE', 'http://localhost:8004')
+            logger.warning(f"Consul resolution failed for notification-service, using fallback: {service_url}")
+            
         response = requests.post(
-            f"{settings.SERVICES.get('NOTIFICATION_SERVICE', 'http://localhost:8004')}/api/notifications/send_from_template/",
+            f"{service_url}/api/notifications/send_from_template/",
             json={
                 'template_id': get_template_id(template_name),
                 'user_id': user_id,
@@ -351,3 +360,9 @@ class UserDetailByIDView(APIView):
             )
 
 get_user_by_id = UserDetailByIDView.as_view()
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def health_check(request):
+    """Health check endpoint."""
+    return JsonResponse({"status": "ok"}, status=200)

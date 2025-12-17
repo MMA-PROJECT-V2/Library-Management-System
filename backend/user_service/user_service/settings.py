@@ -156,10 +156,15 @@ SERVICES = {
 # ============================================
 
 import socket
+import sys
+# Make sure we can import from common
+sys.path.append(str(BASE_DIR.parent))
+from common.consul_utils import get_ip_address
+
 CONSUL_HOST = config('CONSUL_HOST', default='consul')
 CONSUL_PORT = config('CONSUL_PORT', default=8500, cast=int)
 SERVICE_NAME = 'user-service'
 SERVICE_TAGS = ['users', 'backend']
 SERVICE_ID = f"{SERVICE_NAME}-{socket.gethostname()}"
-SERVICE_ADDRESS = config('SERVICE_ADDRESS', default=socket.gethostbyname(socket.gethostname()))
+SERVICE_ADDRESS = config('SERVICE_ADDRESS', default=get_ip_address())
 SERVICE_PORT = config('SERVICE_PORT', default=8001, cast=int)

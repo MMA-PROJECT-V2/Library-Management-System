@@ -10,7 +10,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = config('SECRET_KEY', default='django-insecure-change-this-in-production')
 DEBUG = config('DEBUG', default=True, cast=bool)
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='*').split(',')
+ALLOWED_HOSTS = ["*"]
 
 # ============================================
 #    APPLICATIONS
@@ -160,52 +160,20 @@ SERVICES = {
 # ============================================
 
 import socket
+import sys
+# Make sure we can import from common
+sys.path.append(str(BASE_DIR.parent))
+from common.consul_utils import get_ip_address
+
 CONSUL_HOST = config('CONSUL_HOST', default='consul')
 CONSUL_PORT = config('CONSUL_PORT', default=8500, cast=int)
 SERVICE_NAME = 'loans-service'
 SERVICE_TAGS = ['loans', 'backend']
 SERVICE_ID = f"{SERVICE_NAME}-{socket.gethostname()}"
-SERVICE_ADDRESS = config('SERVICE_ADDRESS', default=socket.gethostbyname(socket.gethostname()))
+SERVICE_ADDRESS = config('SERVICE_ADDRESS', default=get_ip_address())
 SERVICE_PORT = config('SERVICE_PORT', default=8003, cast=int)
 
 # ============================================
 #    LOGGING CONFIGURATION
 # ============================================
 
-LOGGING = {
-    'version': 1,
-    'disable_existing_loggers': False,
-    'formatters': {
-        'verbose': {
-            'format': '{levelname} {asctime} {module} {message}',
-            'style': '{',
-        },
-    },
-    'handlers': {
-        'console': {
-            'class': 'logging.StreamHandler',
-            'formatter': 'verbose',
-        },
-        'file': {
-            'class': 'logging.FileHandler',
-            'filename': BASE_DIR / 'loans.log',
-            'formatter': 'verbose',
-        },
-    },
-    'root': {
-        'handlers': ['console', 'file'],
-        'level': config('LOG_LEVEL', default='INFO'),
-    },
-    'loggers': {
-        'django': {
-            'handlers': ['console', 'file'],
-            'level': 'INFO',
-            'propagate': False,
-        },
-        'loans': {
-            'handlers': ['console', 'file'],
-            'level': 'DEBUG',
-            'propagate': False,
-        },
-    },
-}
