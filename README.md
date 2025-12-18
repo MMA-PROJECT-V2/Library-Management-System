@@ -1,60 +1,98 @@
-# Library-Management-Systeme
-systeme de gestion de bibliotheque centralise
+# 📚 Library Management System — Books Service
 
-# Books Service - Library Management System
+## 🧩 Vue d’ensemble
 
-## 📖 Description
-Le microservice **Books Service** gère tout ce qui concerne les livres dans le système de gestion de bibliothèque.  
-Il permet la création, lecture, mise à jour et suppression des livres (CRUD), ainsi que la gestion des avis sur les livres.
+Le **Books Service** est un microservice du **système de gestion de bibliothèque centralisé**. Il est responsable de la gestion complète des livres : création, consultation, mise à jour, suppression (CRUD), disponibilité, statistiques et (optionnellement) les avis des utilisateurs.
+
+Ce service est conçu pour fonctionner dans une **architecture microservices**, avec authentification et autorisation déléguées au **User Service** via JWT.
+
+---
+
+## 🎯 Objectifs
+
+- Centraliser la gestion des livres
+- Garantir la cohérence des données (ISBN unique, copies disponibles)
+- Sécuriser les opérations sensibles par rôles
+- Offrir des endpoints clairs et paginés pour le frontend
+
+---
+
+## ⚙️ Stack technique
+
+- **Backend** : Django / Django REST Framework
+- **Base de données** : MySQL
+- **Authentification** : JWT (via User Service)
+- **Tests** : Pytest
+- **Documentation API** : Swagger / Redoc
 
 ---
 
 ## ⚡ Fonctionnalités
 
-- CRUD complet sur les livres :
-  - **Créer un livre** (POST /books) – accessible aux rôles **LIBRARIAN/ADMIN**
-  - **Lister les livres** (GET /books) avec pagination
-  - **Afficher les détails d’un livre** (GET /books/{id})
-  - **Modifier un livre** (PUT /books/{id}) – accessible aux rôles **LIBRARIAN/ADMIN**
-  - **Supprimer un livre** (DELETE /books/{id}) – accessible uniquement au rôle **ADMIN**
-- Gestion des avis sur les livres (**optionnel**)
-- Vérification de la disponibilité des livres
-- Statistiques : nombre d’emprunts, copies disponibles
-- Validation de l’ISBN unique
-- Middleware pour :
-  - Vérification JWT (via User Service)
-  - Vérification des rôles
+### 📘 Gestion des livres
+
+- Création, lecture, mise à jour et suppression (CRUD)
+- Pagination des résultats
+- Validation de l’ISBN (unique)
+- Gestion du nombre total et disponible de copies
+- Calcul automatique de la disponibilité
+
+### ⭐ Avis sur les livres (optionnel)
+
+- Ajout d’avis (note + commentaire)
+- Calcul de la note moyenne
+
+### 📊 Statistiques
+
+- Nombre d’emprunts
+- Copies disponibles
+- Fréquence d’emprunt
+
+### 🔐 Sécurité & Middleware
+
+- Validation du JWT via **User Service**
+- Vérification des rôles (ADMIN / LIBRARIAN / USER)
 - Configuration CORS
 
 ---
 
-## 🛠️ Installation
+## 🛠️ Installation & Configuration
 
-1. **Cloner le projet**
+### 1️⃣ Cloner le projet
+
 ```bash
 git clone https://github.com/MMA-PROJECT-V2/Library-Management-System.git
 cd Library-Management-System/backend
 git checkout feature/books-service
+```
 
+### 2️⃣ Créer un environnement virtuel
 
-Créer un environnement virtuel
-
+```bash
 python -m venv venv
-venv\Scripts\activate   # Windows
-source venv/bin/activate # Linux/macOS
+# Windows
+venv\Scripts\activate
+# Linux / macOS
+source venv/bin/activate
+```
 
+### 3️⃣ Installer les dépendances
 
-Installer les dépendances
-
+```bash
 pip install -r requirements.txt
+```
 
+### 4️⃣ Configuration de la base de données MySQL
 
-Configurer la base de données MySQL
+Créer une base de données :
 
-Créer une base de données : books_db
+```sql
+CREATE DATABASE books_db;
+```
 
-Modifier books_service/settings.py :
+Modifier `books_service/settings.py` :
 
+```python
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
@@ -65,121 +103,136 @@ DATABASES = {
         'PORT': '3306',
     }
 }
+```
 
+### 5️⃣ Appliquer les migrations
 
-Appliquer les migrations
-
+```bash
 python manage.py makemigrations
 python manage.py migrate
+```
 
+### 6️⃣ Lancer le serveur
 
-Lancer le serveur
-
+```bash
 python manage.py runserver 8002
+```
 
-📝 Endpoints API
-Méthode	Endpoint	Description	Rôle requis
-POST	/api/books/	Ajouter un livre	LIBRARIAN/ADMIN
-GET	/api/books/	Liste des livres (pagination)	PUBLIC
-GET	/api/books/{id}/	Détails d’un livre	PUBLIC
-PUT	/api/books/{id}/	Modifier un livre	LIBRARIAN/ADMIN
-DELETE	/api/books/{id}/	Supprimer un livre	ADMIN
-🔐 Sécurité
+---
 
-JWT : tous les endpoints nécessitant authentification utilisent un middleware qui valide le token via User Service.
+## 🧪 Tests
 
-Roles : vérification des permissions pour certaines actions (CRUD limité aux rôles LIBRARIAN/ADMIN/ADMIN).
+### Types de tests
 
-📦 Modèles
-Book
+- Tests unitaires CRUD
+- Tests des permissions par rôle
+- Tests de validation des données
 
-isbn : string, unique
+### Lancer les tests
 
-title : string
-
-author : string
-
-publisher : string
-
-publication_year : int
-
-category : string (FICTION, NON_FICTION, SCIENCE...)
-
-description : text
-
-cover_image_url : string (URL)
-
-language : string
-
-pages : int
-
-total_copies : int
-
-available_copies : int
-
-times_borrowed : int
-
-average_rating : decimal
-
-is_available : bool
-
-BookReview (optionnel)
-
-book_id : int
-
-user_id : int
-
-rating : int (1-5)
-
-comment : text
-
-created_at : datetime
-
-🧪 Tests
-
-Tests unitaires CRUD
-
-Tests des permissions par rôle
-
-Commande pour lancer les tests :
-
+```bash
 pytest --cov=books_service
+```
 
-🌐 CORS
+---
 
-Configuré pour accepter les requêtes depuis le frontend
+## 📝 Endpoints API
 
+| Méthode | Endpoint           | Description                    | Rôle requis       |
+| ------- | ------------------ | ------------------------------ | ----------------- |
+| POST    | `/api/books/`      | Ajouter un livre               | LIBRARIAN / ADMIN |
+| GET     | `/api/books/`      | Lister les livres (pagination) | PUBLIC            |
+| GET     | `/api/books/{id}/` | Détails d’un livre             | PUBLIC            |
+| PUT     | `/api/books/{id}/` | Modifier un livre              | LIBRARIAN / ADMIN |
+| DELETE  | `/api/books/{id}/` | Supprimer un livre             | ADMIN             |
+
+---
+
+## 🔐 Sécurité
+
+- **JWT** : tous les endpoints sécurisés nécessitent un token valide
+- **Rôles** : contrôle strict des permissions
+- **Principe du moindre privilège** appliqué
+
+---
+
+## 📦 Modèles
+
+### 📘 Book
+
+- `isbn` : string (unique)
+- `title` : string
+- `author` : string
+- `publisher` : string
+- `publication_year` : int
+- `category` : string (FICTION, NON_FICTION, SCIENCE, ...)
+- `description` : text
+- `cover_image_url` : string (URL)
+- `language` : string
+- `pages` : int
+- `total_copies` : int
+- `available_copies` : int
+- `times_borrowed` : int
+- `average_rating` : decimal
+- `is_available` : bool
+
+### ⭐ BookReview (optionnel)
+
+- `book_id` : int
+- `user_id` : int
+- `rating` : int (1–5)
+- `comment` : text
+- `created_at` : datetime
+
+---
+
+## 🌐 CORS
+
+Configuré pour autoriser le frontend :
+
+```python
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000"
 ]
-
-📚 Documentation
-
-Swagger / Redoc (optionnel)
-
-Exemple : http://127.0.0.1:8002/swagger/
-
-🔧 Contributions
-
-Branche principale : develop
-
-Nouvelle fonctionnalité : feature/<nom-feature>
-
-Commits clairs et descriptifs
-
-📝 Auteur
-
-Projet réalisé par Houssem Keddam - 4ème année Ingénierie Informatique
-
-Microservice Books Service
-
+```
 
 ---
 
-💡 **Conseil** : crée un fichier `README.md` dans le dossier **`backend/books_service/`**, colle ce contenu, puis commit sur ta branche `feature/books-service` :
+## 📚 Documentation API
 
-```bash
-git add README.md
-git commit -m "Ajout README complet pour Books Service"
-git push origin feature/books-service
+- **Swagger / Redoc** (optionnel)
+- Exemple :
+
+```
+http://127.0.0.1:8002/swagger/
+```
+
+---
+
+## 🤝 Contributions
+
+- Branche principale : `develop`
+- Nouvelle fonctionnalité : `feature/<nom-feature>`
+- Commits clairs, courts et descriptifs
+- Pull Request obligatoire avant merge
+
+---
+
+## 🚀 Déploiement (aperçu)
+
+- Conteneurisation possible avec Docker
+- Intégration avec Traefik / Consul
+- Variables sensibles via `.env`
+
+---
+
+## 📝 Auteur
+
+**Houssem Keddam**
+4ème année — Ingénierie Informatique
+Projet académique : _Library Management System_
+
+---
+
+📌 _Ce microservice est conçu pour être évolutif, sécurisé et facilement intégrable dans un écosystème microservices._
