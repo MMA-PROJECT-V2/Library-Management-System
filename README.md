@@ -46,7 +46,7 @@ Our application follows a modern microservices architecture designed for scalabi
 <table>
   <tr>
     <td align="center"><b>Frontend</b></td>
-    <td>Vue.js 3</td>
+    <td>React.js</td>
   </tr>
   <tr>
     <td align="center"><b>Backend</b></td>
@@ -66,7 +66,7 @@ Our application follows a modern microservices architecture designed for scalabi
   </tr>
   <tr>
     <td align="center"><b>Code Quality</b></td>
-    <td>SonarQube</td>
+    <td>SonarCloud</td>
   </tr>
   <tr>
     <td align="center"><b>Project Management</b></td>
