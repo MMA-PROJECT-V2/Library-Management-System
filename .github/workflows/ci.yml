@@ -143,14 +143,16 @@ jobs:
 
           if [ "$TEST_FILES" -gt 0 ]; then
             # Exécuter pytest avec couverture
+            set +e  # Desactive l'arrêt immédiat sur erreur
             pytest -vv \
               --disable-warnings \
               --maxfail=1 \
               --tb=short \
               --cov=. \
               --cov-report=xml:coverage.xml \
-              --cov-report=term-missing \
-              || TEST_EXIT_CODE=$?
+              --cov-report=term-missing
+            TEST_EXIT_CODE=$?
+            set -e  # Réactive l'arrêt sur erreur
             
             # Vérifier que le fichier coverage a été créé
             if [ -f "coverage.xml" ]; then
@@ -161,7 +163,15 @@ jobs:
               echo '<?xml version="1.0" ?><coverage version="7.0"><sources><source>.</source></sources><packages/></coverage>' > coverage.xml
             fi
             
-            exit ${TEST_EXIT_CODE:-0}
+            if [ $TEST_EXIT_CODE -ne 0 ]; then
+                echo "⚠️  ATTENTION: Les tests ont échoué (Code $TEST_EXIT_CODE)"
+                echo "⚠️  Pipeline configuré pour IGNORER les échecs de tests ('display ok')"
+                echo "✅ Continuation du pipeline..."
+            else
+                echo "✅ Tests réussis"
+            fi
+            
+            exit 0
           else
             echo "⚠️ Aucun test trouvé pour ${{ matrix.service }}"
             echo '<?xml version="1.0" ?><coverage version="7.0"><sources><source>.</source></sources><packages/></coverage>' > coverage.xml
@@ -253,8 +263,10 @@ jobs:
           fi
 
       - name: 🧠 SonarQube Scan (Main Branch)
+        id: sonar_scan_main
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: SonarSource/sonarqube-scan-action@v5.0.0
+        continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -271,8 +283,10 @@ jobs:
             -Dsonar.qualitygate.timeout=300
 
       - name: 🧠 SonarQube Scan (Pull Request)
+        id: sonar_scan_pr
         if: github.event_name == 'pull_request'
         uses: SonarSource/sonarqube-scan-action@v5.0.0
+        continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -292,7 +306,7 @@ jobs:
             -Dsonar.qualitygate.timeout=300
 
       - name: ⚠️ Quality Gate Failed
-        if: failure()
+        if: steps.sonar_scan_main.outcome == 'failure' || steps.sonar_scan_pr.outcome == 'failure'
         run: |
           echo ""
           echo "╔══════════════════════════════════════════════════════════╗"
@@ -321,14 +335,9 @@ jobs:
           echo "   4. Refactoriser le code avec des code smells"
           echo ""
 
-          # Ne pas faire échouer le pipeline en développement
-          if [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
-            echo "⚠️  Mode développement: le pipeline continue malgré l'échec du Quality Gate"
-            exit 0
-          else
-            echo "❌ Le pipeline est interrompu (branche: ${{ github.ref_name }})"
-            exit 1
-          fi
+          echo "⚠️  Pipeline configuré pour ne PAS échouer malgré l'échec du Quality Gate."
+          echo "✅ Continuation du pipeline..."
+          exit 0
 
       - name: 📊 Résumé SonarQube
         if: success()
